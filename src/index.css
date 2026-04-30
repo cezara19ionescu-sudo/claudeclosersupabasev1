@@ -129,6 +129,35 @@
   }
 }
 
+.category-highlight-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg, transparent 12%, rgba(255,255,255,0.58) 44%, transparent 68%);
+  opacity: 0;
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+
+.category-highlight-card:hover::after {
+  animation: category-sheen 0.75s ease forwards;
+}
+
+@keyframes category-sheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-120%);
+  }
+  18% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+}
+
 /* Nav tab premium effect */
 @utility premium-nav {
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);

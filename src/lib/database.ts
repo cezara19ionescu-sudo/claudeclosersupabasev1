@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { User, UserType, Professional, Job, Message, Review, PortfolioItem, Slot } from '../types';
+import type { User, UserType, Professional, Job, Message, Review, PortfolioItem, Slot, ServiceRequest, Quote, Booking } from '../types';
 
 // ============================================
 // AUTH FUNCTIONS
@@ -140,7 +140,36 @@ export async function getAllProfessionals(): Promise<Professional[]> {
   if (error) throw error;
   if (!pros) return [];
 
-  return pros.map(mapDbProToProfessional);
+  const mapped = pros.map(mapDbProToProfessional);
+
+  try {
+    const { data: categories, error: categoriesError } = await supabase
+      .from('professional_categories')
+      .select('*');
+
+    if (!categoriesError && categories) {
+      return mapped.map(pro => {
+        const extraCategories = categories
+          .filter((c: any) => c.user_id === pro.id || c.professional_id === (pro as any)._dbId)
+          .map((c: any) => ({
+            id: c.id,
+            catId: c.cat_id,
+            sub: c.sub,
+            isPrimary: c.is_primary
+          }));
+        return {
+          ...pro,
+          categories: extraCategories.length > 0
+            ? extraCategories
+            : [{ catId: pro.catId, sub: pro.sub, isPrimary: true }]
+        };
+      });
+    }
+  } catch (e) {
+    console.warn('professional_categories not available yet:', e);
+  }
+
+  return mapped;
 }
 
 export async function getProfessionalByUserId(userId: string): Promise<Professional | null> {
@@ -187,7 +216,12 @@ export async function createProfessional(pro: Partial<Professional> & { user_id:
       hired_count: pro.hiredCount || 0,
       response_time: pro.responseTime || '',
       year_started: pro.yearStarted,
-      team_size: pro.teamSize || ''
+      team_size: pro.teamSize || '',
+      description: pro.description || '',
+      experience_years: pro.experienceYears || 0,
+      fixed_prices: pro.fixedPrices || [],
+      coverage_radius_km: pro.coverageRadiusKm || 10,
+      availability: pro.availability || {}
     })
     .select()
     .single();
@@ -223,6 +257,12 @@ export async function updateProfessional(proDbId: string, updates: Partial<Profe
     updateData.verified_dbs = updates.v.dbs;
     updateData.verified_ins = updates.v.ins;
   }
+  // Current Supabase schema stores storefront copy in `about` and does not
+  // include the newer optional dashboard columns yet.
+  if ((updates as any).description !== undefined && updates.about === undefined) updateData.about = (updates as any).description;
+  if ((updates as any).experienceYears !== undefined) updateData.year_started = new Date().getFullYear() - Number((updates as any).experienceYears || 0);
+
+  if (Object.keys(updateData).length === 0) return null;
 
   const { data, error } = await supabase
     .from('professionals')
@@ -327,6 +367,8 @@ export async function createJobReview(review: {
   rating: number;
   text: string;
   photos?: string[];
+  onTime?: boolean | null;
+  recommend?: boolean | null;
 }) {
   const { data, error } = await supabase
     .from('job_reviews')
@@ -336,7 +378,9 @@ export async function createJobReview(review: {
       author_type: review.authorType,
       rating: review.rating,
       text: review.text,
-      photos: review.photos || []
+      photos: review.photos || [],
+      on_time: review.onTime ?? null,
+      recommend: review.recommend ?? null
     })
     .select()
     .single();
@@ -362,6 +406,41 @@ export async function getMyMessages(userId: string): Promise<Message[]> {
   return data.map(mapDbMsgToMessage);
 }
 
+export async function uploadChatImage(file: File, conversationId: string): Promise<string> {
+  const ext = file.name.split('.').pop() || 'jpg';
+  const fileName = `${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('chat-media')
+    .upload(fileName, file, { contentType: file.type, upsert: false });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from('chat-media')
+    .getPublicUrl(fileName);
+
+  return data.publicUrl;
+}
+
+export async function uploadProfessionalImage(file: File, proId: string, kind: 'avatar' | 'cover' | 'portfolio'): Promise<string> {
+  const ext = file.name.split('.').pop() || 'jpg';
+  const safeKind = kind || 'portfolio';
+  const fileName = `professionals/${proId}/${safeKind}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('chat-media')
+    .upload(fileName, file, { contentType: file.type, upsert: false });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from('chat-media')
+    .getPublicUrl(fileName);
+
+  return data.publicUrl;
+}
+
 export async function sendMessage(msg: {
   conversationId: string;
   fromId: string;
@@ -369,6 +448,7 @@ export async function sendMessage(msg: {
   toId: string;
   text: string;
   isEmergency?: boolean;
+  imageUrl?: string;
 }): Promise<Message> {
   const { data, error } = await supabase
     .from('messages')
@@ -379,6 +459,7 @@ export async function sendMessage(msg: {
       to_id: msg.toId,
       text: msg.text,
       is_emergency: msg.isEmergency || false,
+      image_url: msg.imageUrl || null,
       read: false
     })
     .select()
@@ -404,8 +485,9 @@ export async function markMessagesAsRead(conversationId: string, userId: string)
 // ============================================
 
 export function subscribeToMessages(userId: string, callback: (msg: Message) => void) {
-  const channel = supabase
-    .channel(`messages-${userId}`)
+  // Subscribe to messages sent TO this user
+  const chRecv = supabase
+    .channel(`messages-recv-${userId}`)
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
@@ -415,7 +497,22 @@ export function subscribeToMessages(userId: string, callback: (msg: Message) => 
       callback(mapDbMsgToMessage(payload.new));
     })
     .subscribe();
-  return channel;
+
+  // Also subscribe to messages sent BY this user (so sent messages appear in real-time on other devices)
+  const chSent = supabase
+    .channel(`messages-sent-${userId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'messages',
+      filter: `from_id=eq.${userId}`
+    }, (payload) => {
+      callback(mapDbMsgToMessage(payload.new));
+    })
+    .subscribe();
+
+  // Return an object that can remove both channels
+  return { chRecv, chSent };
 }
 
 export function subscribeToJobs(userId: string, callback: (job: Job) => void) {
@@ -467,9 +564,53 @@ export async function deletePortfolioItem(itemId: string) {
   if (error) throw error;
 }
 
+export async function replaceProfessionalCategories(
+  professionalId: string,
+  userId: string,
+  categories: Array<{ catId: string; sub: string; isPrimary?: boolean }>
+) {
+  const { error: deleteError } = await supabase
+    .from('professional_categories')
+    .delete()
+    .eq('professional_id', professionalId);
+
+  if (deleteError) throw deleteError;
+
+  if (categories.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('professional_categories')
+    .insert(categories.map(cat => ({
+      professional_id: professionalId,
+      user_id: userId,
+      cat_id: cat.catId,
+      sub: cat.sub,
+      is_primary: !!cat.isPrimary
+    })))
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
 // ============================================
 // MAPPER FUNCTIONS (DB → App types)
 // ============================================
+
+function mapDbMsgToMessage(db: any): Message {
+  return {
+    id: db.id,
+    cid: db.conversation_id,
+    from: db.from_id,
+    fn: db.from_name,
+    to: db.to_id,
+    text: db.text || '',
+    time: db.created_at,
+    read: db.read ?? false,
+    isEmergency: db.is_emergency ?? false,
+    imageUrl: db.image_url || undefined,
+  };
+}
 
 function mapDbProToProfessional(dbPro: any): Professional {
   return {
@@ -524,9 +665,20 @@ function mapDbProToProfessional(dbPro: any): Professional {
       q: f.question,
       a: f.answer
     })),
-    // Store the DB id for updates
-    _dbId: dbPro.id
-  } as Professional & { _dbId: string };
+    description: dbPro.description || '',
+    experienceYears: dbPro.experience_years || 0,
+    fixedPrices: dbPro.fixed_prices || [],
+    packages: dbPro.packages || [],
+    coverageRadiusKm: dbPro.coverage_radius_km || 10,
+    availability: dbPro.availability || {},
+    categories: [{ catId: dbPro.cat_id, sub: dbPro.sub, isPrimary: true }],
+    _dbId: dbPro.id,
+    monthlyGoal: dbPro.monthly_goal || 1500,
+    address: dbPro.address || '',
+    lat: dbPro.lat ?? undefined,
+    lng: dbPro.lng ?? undefined,
+    badge: dbPro.badge ?? null,
+  } as Professional;
 }
 
 function mapDbJobToJob(dbJob: any): Job {
@@ -569,16 +721,656 @@ function mapDbJobToJob(dbJob: any): Job {
   };
 }
 
-function mapDbMsgToMessage(dbMsg: any): Message {
+// ============================================
+// REVIEW STATS & PRO REVIEWS
+// ============================================
+
+export async function getProReviews(proUserId: string): Promise<Review[]> {
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('id, customer_name')
+    .eq('pro_user_id', proUserId);
+
+  if (!jobs || jobs.length === 0) return [];
+
+  const jobIds = jobs.map(j => j.id);
+  const jobNameMap = new Map(jobs.map(j => [j.id, j.customer_name]));
+
+  const { data: reviews, error } = await supabase
+    .from('job_reviews')
+    .select('*')
+    .eq('author_type', 'customer')
+    .in('job_id', jobIds)
+    .order('created_at', { ascending: false });
+
+  if (error || !reviews) return [];
+
+  return reviews.map(r => ({
+    by: jobNameMap.get(r.job_id) || 'Customer',
+    rating: r.rating,
+    text: r.text,
+    date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+    photos: r.photos || []
+  }));
+}
+
+export async function getProReviewStats(proUserId: string): Promise<{
+  avgRating: number;
+  reviewCount: number;
+  onTimePct: number | null;
+  recommendPct: number | null;
+}> {
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('id')
+    .eq('pro_user_id', proUserId);
+
+  if (!jobs || jobs.length === 0) return { avgRating: 5.0, reviewCount: 0, onTimePct: null, recommendPct: null };
+
+  const jobIds = jobs.map(j => j.id);
+  const { data: reviews } = await supabase
+    .from('job_reviews')
+    .select('rating, on_time, recommend')
+    .eq('author_type', 'customer')
+    .in('job_id', jobIds);
+
+  if (!reviews || reviews.length === 0) return { avgRating: 5.0, reviewCount: 0, onTimePct: null, recommendPct: null };
+
+  const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+
+  const onTimeAnswered = reviews.filter(r => r.on_time !== null);
+  const onTimePct = onTimeAnswered.length > 0
+    ? Math.round(100 * onTimeAnswered.filter(r => r.on_time === true).length / onTimeAnswered.length)
+    : null;
+
+  const recommendAnswered = reviews.filter(r => r.recommend !== null);
+  const recommendPct = recommendAnswered.length > 0
+    ? Math.round(100 * recommendAnswered.filter(r => r.recommend === true).length / recommendAnswered.length)
+    : null;
+
   return {
-    id: dbMsg.id,
-    cid: dbMsg.conversation_id,
-    from: dbMsg.from_id,
-    fn: dbMsg.from_name,
-    to: dbMsg.to_id,
-    text: dbMsg.text,
-    time: dbMsg.created_at,
-    read: dbMsg.read || false,
-    isEmergency: dbMsg.is_emergency || false
+    avgRating: Math.round(avg * 10) / 10,
+    reviewCount: reviews.length,
+    onTimePct,
+    recommendPct
   };
+}
+
+// ============================================
+// SERVICE REQUESTS & QUOTES
+// ============================================
+
+export async function createServiceRequest(req: {
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  catId: string;
+  sub: string;
+  description: string;
+  budgetMax?: number;
+  slotPreference?: string;
+}): Promise<ServiceRequest> {
+  const { data, error } = await supabase
+    .from('service_requests')
+    .insert({
+      customer_id: req.customerId,
+      customer_name: req.customerName,
+      customer_email: req.customerEmail,
+      cat_id: req.catId,
+      sub: req.sub,
+      description: req.description,
+      budget_max: req.budgetMax || null,
+      slot_preference: req.slotPreference || null,
+      status: 'open'
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapDbRequest(data);
+}
+
+export async function getServiceRequestsForPro(catId: string, sub: string): Promise<ServiceRequest[]> {
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select('*')
+    .eq('cat_id', catId)
+    .eq('sub', sub)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data || []).map(mapDbRequest);
+}
+
+export async function getMyServiceRequests(customerId: string): Promise<ServiceRequest[]> {
+  const { data, error } = await supabase
+    .from('service_requests')
+    .select('*, quotes(*)')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(r => ({
+    ...mapDbRequest(r),
+    quotes: (r.quotes || []).map(mapDbQuote)
+  }));
+}
+
+export async function submitQuote(q: {
+  requestId: string;
+  proId: string;
+  proDbId: string;
+  proName: string;
+  proEmail: string;
+  proImg?: string;
+  price: number;
+  unit: string;
+  message: string;
+}): Promise<Quote> {
+  const { data, error } = await supabase
+    .from('quotes')
+    .insert({
+      request_id: q.requestId,
+      pro_id: q.proId,
+      pro_db_id: q.proDbId,
+      pro_name: q.proName,
+      pro_email: q.proEmail,
+      pro_img: q.proImg || null,
+      price: q.price,
+      unit: q.unit,
+      message: q.message,
+      status: 'pending'
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapDbQuote(data);
+}
+
+export async function acceptQuote(quoteId: string, requestId: string): Promise<void> {
+  // Mark quote as accepted
+  await supabase.from('quotes').update({ status: 'accepted' }).eq('id', quoteId);
+  // Decline all other quotes for this request
+  await supabase.from('quotes').update({ status: 'declined' }).eq('request_id', requestId).neq('id', quoteId);
+  // Close the request
+  await supabase.from('service_requests').update({ status: 'closed' }).eq('id', requestId);
+}
+
+export function subscribeToQuotes(requestId: string, callback: (q: Quote) => void) {
+  return supabase
+    .channel(`quotes-${requestId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'quotes', filter: `request_id=eq.${requestId}` },
+      payload => callback(mapDbQuote(payload.new)))
+    .subscribe();
+}
+
+function mapDbRequest(db: any): ServiceRequest {
+  return {
+    id: db.id,
+    customerId: db.customer_id,
+    customerName: db.customer_name,
+    customerEmail: db.customer_email,
+    catId: db.cat_id,
+    sub: db.sub,
+    description: db.description || '',
+    budgetMax: db.budget_max || undefined,
+    slotPreference: db.slot_preference || undefined,
+    status: db.status || 'open',
+    created: db.created_at,
+    quotes: []
+  };
+}
+
+function mapDbQuote(db: any): Quote {
+  return {
+    id: db.id,
+    requestId: db.request_id,
+    proId: db.pro_id,
+    proDbId: db.pro_db_id,
+    proName: db.pro_name,
+    proEmail: db.pro_email,
+    proImg: db.pro_img,
+    price: db.price,
+    unit: db.unit || '/job',
+    message: db.message || '',
+    status: db.status || 'pending',
+    created: db.created_at
+  };
+}
+
+// ============================================
+// EMERGENCY REQUESTS FUNCTIONS
+// ============================================
+
+export interface EmergencyRequest {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  categoryId: string;
+  categoryName: string;
+  description: string;
+  locationCity: string;
+  locationPostcode: string;
+  priorityFee: number;
+  surgeMultiplier: number;
+  surgeLabel: string;
+  status: 'pending' | 'matched' | 'hired' | 'cancelled';
+  resultingJobId?: string;
+  hiredProId?: string;
+  hiredProName?: string;
+  createdAt: string;
+  matchedAt?: string;
+  hiredAt?: string;
+}
+
+export async function createEmergencyRequest(req: {
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  categoryId: string;
+  categoryName: string;
+  description: string;
+  locationCity: string;
+  locationPostcode: string;
+  priorityFee: number;
+  surgeMultiplier: number;
+  surgeLabel: string;
+}): Promise<EmergencyRequest> {
+  const { data, error } = await supabase
+    .from('emergency_requests')
+    .insert({
+      customer_id: req.customerId,
+      customer_name: req.customerName,
+      customer_email: req.customerEmail,
+      category_id: req.categoryId,
+      category_name: req.categoryName,
+      description: req.description,
+      location_city: req.locationCity,
+      location_postcode: req.locationPostcode,
+      priority_fee: req.priorityFee,
+      surge_multiplier: req.surgeMultiplier,
+      surge_label: req.surgeLabel,
+      status: 'pending'
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return mapDbEmergencyRequest(data);
+}
+
+export async function getMyEmergencyRequests(customerId: string): Promise<EmergencyRequest[]> {
+  const { data, error } = await supabase
+    .from('emergency_requests')
+    .select('*')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  if (!data) return [];
+
+  return data.map(mapDbEmergencyRequest);
+}
+
+export async function getPendingEmergencyRequests(): Promise<EmergencyRequest[]> {
+  const { data, error } = await supabase
+    .from('emergency_requests')
+    .select('*')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  if (!data) return [];
+
+  return data.map(mapDbEmergencyRequest);
+}
+
+export async function updateEmergencyRequestStatus(
+  requestId: string,
+  status: 'matched' | 'hired' | 'cancelled',
+  extras?: {
+    resultingJobId?: string;
+    hiredProId?: string;
+    hiredProName?: string;
+  }
+): Promise<EmergencyRequest> {
+  const updateData: any = { status };
+
+  if (status === 'matched') updateData.matched_at = new Date().toISOString();
+  if (status === 'hired') updateData.hired_at = new Date().toISOString();
+  if (extras?.resultingJobId) updateData.resulting_job_id = extras.resultingJobId;
+  if (extras?.hiredProId) updateData.hired_pro_id = extras.hiredProId;
+  if (extras?.hiredProName) updateData.hired_pro_name = extras.hiredProName;
+
+  const { data, error } = await supabase
+    .from('emergency_requests')
+    .update(updateData)
+    .eq('id', requestId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return mapDbEmergencyRequest(data);
+}
+
+export function subscribeToEmergencyRequests(callback: (req: EmergencyRequest) => void) {
+  const channel = supabase
+    .channel('emergency-requests-feed')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'emergency_requests'
+    }, (payload) => {
+      callback(mapDbEmergencyRequest(payload.new));
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'emergency_requests'
+    }, (payload) => {
+      callback(mapDbEmergencyRequest(payload.new));
+    })
+    .subscribe();
+  return channel;
+}
+
+function mapDbEmergencyRequest(db: any): EmergencyRequest {
+  return {
+    id: db.id,
+    customerId: db.customer_id,
+    customerName: db.customer_name,
+    customerEmail: db.customer_email || '',
+    categoryId: db.category_id,
+    categoryName: db.category_name,
+    description: db.description || '',
+    locationCity: db.location_city || '',
+    locationPostcode: db.location_postcode || '',
+    priorityFee: parseFloat(db.priority_fee) || 10,
+    surgeMultiplier: parseFloat(db.surge_multiplier) || 1.0,
+    surgeLabel: db.surge_label || 'Standard',
+    status: db.status,
+    resultingJobId: db.resulting_job_id,
+    hiredProId: db.hired_pro_id,
+    hiredProName: db.hired_pro_name || '',
+    createdAt: db.created_at,
+    matchedAt: db.matched_at,
+    hiredAt: db.hired_at
+  };
+}
+
+// ============================================
+// PRICING & AVAILABILITY FUNCTIONS
+// ============================================
+
+export async function updatePackages(proDbId: string, packages: Array<{ name: string, price: number, unit: string, description: string, features: string[] }>) {
+  const { error } = await supabase
+    .from('professionals')
+    .update({ packages })
+    .eq('id', proDbId);
+  if (error) throw error;
+}
+
+export async function replaceFaqs(proDbId: string, faqs: Array<{ q: string; a: string }>) {
+  // Delete existing FAQs for this pro then re-insert
+  await supabase.from('faqs').delete().eq('professional_id', proDbId);
+  if (faqs.length === 0) return;
+  const { error } = await supabase.from('faqs').insert(
+    faqs.map(f => ({ professional_id: proDbId, question: f.q, answer: f.a }))
+  );
+  if (error) throw error;
+}
+
+export async function updateFixedPrices(proDbId: string, fixedPrices: Array<{ service: string, price: number, unit: string }>) {
+  const { data, error } = await supabase
+    .from('professionals')
+    .update({ fixed_prices: fixedPrices })
+    .eq('id', proDbId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateAvailability(proDbId: string, availability: Record<string, string[]>) {
+  const { data, error } = await supabase
+    .from('professionals')
+    .update({ availability })
+    .eq('id', proDbId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// ============================================
+// BOOKING FUNCTIONS
+// ============================================
+
+function mapDbBooking(row: any): Booking {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    clientName: row.client_name || '',
+    clientEmail: row.client_email || '',
+    proId: row.pro_id,
+    proDbId: row.pro_db_id,
+    proName: row.pro_name || '',
+    date: row.date,
+    timeSlot: row.time_slot,
+    description: row.description || '',
+    status: row.status,
+    created: row.created_at,
+  };
+}
+
+export async function createBooking(booking: {
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  proId: string;
+  proDbId?: string;
+  proName: string;
+  date: string;
+  timeSlot: string;
+  description: string;
+}): Promise<Booking> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .insert({
+      client_id: booking.clientId,
+      client_name: booking.clientName,
+      client_email: booking.clientEmail,
+      pro_id: booking.proId,
+      pro_db_id: booking.proDbId,
+      pro_name: booking.proName,
+      date: booking.date,
+      time_slot: booking.timeSlot,
+      description: booking.description,
+      status: 'pending',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapDbBooking(data);
+}
+
+export async function getMyBookings(clientId: string): Promise<Booking[]> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('date', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapDbBooking);
+}
+
+export async function getProBookings(proId: string): Promise<Booking[]> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('pro_id', proId)
+    .order('date', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapDbBooking);
+}
+
+export async function updateBookingStatus(
+  bookingId: string,
+  status: 'confirmed' | 'declined' | 'cancelled'
+): Promise<void> {
+  const { error } = await supabase
+    .from('bookings')
+    .update({ status })
+    .eq('id', bookingId);
+  if (error) throw error;
+}
+
+export async function updateMonthlyGoal(proDbId: string, goal: number): Promise<void> {
+  const { error } = await supabase
+    .from('professionals')
+    .update({ monthly_goal: goal })
+    .eq('id', proDbId);
+  if (error) throw error;
+}
+
+// ─── Location ────────────────────────────────────────────────────────────────
+
+/** Geocode a street name in Ploiești via Nominatim (OSM). Returns null if not found. */
+export async function geocodeStreet(street: string): Promise<{ lat: number; lng: number } | null> {
+  const query = encodeURIComponent(`${street}, Ploiesti, Romania`);
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=ro`,
+      { headers: { 'User-Agent': 'CloserApp/1.0 (contact@closer.ro)' } }
+    );
+    const data = await res.json();
+    if (data.length === 0) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch {
+    return null;
+  }
+}
+
+/** Haversine distance in km between two points */
+export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+export const PLOIESTI_CENTER = { lat: 44.9369, lng: 26.0224 };
+export const PLOIESTI_RADIUS_KM = 20;
+
+export async function updateProLocation(
+  proDbId: string,
+  address: string,
+  lat: number | null,
+  lng: number | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('professionals')
+    .update({ address, lat, lng })
+    .eq('id', proDbId);
+  if (error) throw error;
+}
+
+// ─── Favorites ─────────────────────────────────────────────────────────────
+
+export async function getFavorites(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('favorites')
+    .select('professional_id')
+    .eq('user_id', userId);
+  if (error) throw error;
+  return (data || []).map(r => r.professional_id);
+}
+
+export async function addFavorite(userId: string, proId: string): Promise<void> {
+  const { error } = await supabase
+    .from('favorites')
+    .insert({ user_id: userId, professional_id: proId });
+  if (error && error.code !== '23505') throw error; // ignore duplicate
+}
+
+export async function removeFavorite(userId: string, proId: string): Promise<void> {
+  const { error } = await supabase
+    .from('favorites')
+    .delete()
+    .eq('user_id', userId)
+    .eq('professional_id', proId);
+  if (error) throw error;
+}
+
+// ============================================
+// VERIFICATION FUNCTIONS
+// ============================================
+
+export async function submitVerificationRequest(
+  userId: string,
+  proId: string,
+  idFrontUrl: string,
+  idBackUrl: string,
+  selfieUrl: string
+): Promise<void> {
+  // Upsert — replace any existing pending request
+  const { error } = await supabase
+    .from('verification_requests')
+    .upsert({
+      user_id: userId,
+      professional_id: proId,
+      id_front_url: idFrontUrl,
+      id_back_url: idBackUrl,
+      selfie_url: selfieUrl,
+      status: 'pending',
+      submitted_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+  if (error) throw error;
+}
+
+export async function getVerificationStatus(userId: string): Promise<'none' | 'pending' | 'approved' | 'rejected'> {
+  const { data, error } = await supabase
+    .from('verification_requests')
+    .select('status')
+    .eq('user_id', userId)
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (error || !data) return 'none';
+  return data.status as 'pending' | 'approved' | 'rejected';
+}
+
+export async function uploadVerificationDoc(
+  userId: string,
+  file: File,
+  docType: 'id_front' | 'id_back' | 'selfie'
+): Promise<string> {
+  const ext = file.name.split('.').pop() || 'jpg';
+  const path = `${userId}/${docType}_${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('verifications')
+    .upload(path, file, { upsert: true });
+  if (error) throw error;
+  // Return the path (not public URL — bucket is private)
+  return path;
+}
+
+export async function updatePhone(userId: string, phone: string, verified: boolean = false): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ phone, phone_verified: verified })
+    .eq('id', userId);
+  if (error) throw error;
+}
+
+export async function sendPhoneOtp(phone: string): Promise<void> {
+  const { error } = await supabase.auth.signInWithOtp({ phone });
+  if (error) throw error;
+}
+
+export async function verifyPhoneOtp(phone: string, token: string): Promise<boolean> {
+  const { error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+  if (error) return false;
+  return true;
 }

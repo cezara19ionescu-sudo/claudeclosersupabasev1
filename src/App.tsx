@@ -21,6 +21,8 @@ import { ProOnboarding } from './components/ProOnboarding';
 import { translations, Language } from './utils/translations';
 import { ProProfileManagement } from './components/ProProfileManagement';
 import ProDashboard from './components/ProDashboard';
+import { AdminPanel } from './components/AdminPanel';
+import { ProProfileTab } from './components/ProProfileTab';
 import { supabase } from './lib/supabase';
 import * as db from './lib/database';
 
@@ -62,6 +64,9 @@ export default function App() {
             if (!cancelled && profile) {
               console.log('[AUTH] Got profile from DB, updating user');
               setUser(profile);
+              ensureProfessionalProfile(profile)
+                .then(() => loadProfessionals())
+                .catch((e) => console.warn('[AUTH] ensure professional profile failed:', e));
             }
           }).catch((e) => console.warn('[AUTH] getProfile failed:', e));
           loadUserData(session.user.id).catch(() => {});
@@ -87,7 +92,12 @@ export default function App() {
         setUser(u);
         setAuthLoading(false);
         db.getProfile(session.user.id).then(profile => {
-          if (!cancelled && profile) setUser(profile);
+          if (!cancelled && profile) {
+            setUser(profile);
+            ensureProfessionalProfile(profile)
+              .then(() => loadProfessionals())
+              .catch((e) => console.warn('[AUTH] ensure professional profile failed:', e));
+          }
         }).catch(() => {});
         loadUserData(session.user.id).catch(() => {});
       } else if (event === 'SIGNED_OUT') {
@@ -128,6 +138,31 @@ export default function App() {
       console.error('Error loading professionals:', e);
       // Fallback to static PROS
     }
+  };
+
+  const ensureProfessionalProfile = async (profile: User) => {
+    if (profile.type !== 'professional') return;
+
+    const existing = await db.getProfessionalByUserId(profile.id);
+    if (existing) return;
+
+    await db.createProfessional({
+      user_id: profile.id,
+      name: profile.name || profile.email.split('@')[0] || 'Professional',
+      email: profile.email,
+      catId: 'home',
+      sub: 'Handyman',
+      loc: 'Local',
+      about: 'New professional on Closer.',
+      rating: 5.0,
+      rc: 0,
+      jobs: 0,
+      price: 30,
+      unit: '/hr',
+      v: { id: 1, dbs: 0, ins: 0 },
+      svcs: ['General Service'],
+      isEmergencyAvailable: false
+    });
   };
 
   // Load user-specific data (jobs, messages)
@@ -208,6 +243,8 @@ export default function App() {
   const [emergencyStartTime, setEmergencyStartTime] = useState(() => localStorage.getItem('closer_emergency_start') || '08:00');
   const [emergencyEndTime, setEmergencyEndTime] = useState(() => localStorage.getItem('closer_emergency_end') || '22:00');
   const [emergencyExpiresAt, setEmergencyExpiresAt] = useState<string | null>(() => localStorage.getItem('closer_emergency_expires'));
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showProProfileManager, setShowProProfileManager] = useState(false);
   
   const [lang, setLang] = useState<Language>(() => {
     const saved = localStorage.getItem('closer_lang');
@@ -223,11 +260,27 @@ export default function App() {
       return key;
     }
   };
+
+  const adminEmails = useMemo(() => {
+    const configured = String(import.meta.env.VITE_ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    return Array.from(new Set([
+      ...configured,
+      'andreimatache@yahoo.com',
+      'andreimatache2@yahoo.com',
+    ]));
+  }, []);
+
+  const isAdmin = !!user?.email && adminEmails.includes(user.email.toLowerCase());
   
   // --- SURVEY STATE ---
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveySub, setSurveySub] = useState<string | null>(null);
   const [surveyCat, setSurveyCat] = useState<Category | null>(null);
+  const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string> | null>(null);
 
   const dealScrollRef = useRef<HTMLDivElement>(null);
 
@@ -299,6 +352,10 @@ export default function App() {
   
   const pendingCnt = useMemo(() => myJobs.filter(j => ['hired', 'finish_requested'].includes(j.status)).length, [myJobs]);
   const unreadMsgs = useMemo(() => allMsgs.filter(m => m.to === user?.id && !m.read).length, [allMsgs, user]);
+  const currentProfessional = useMemo(() => {
+    if (!user) return null;
+    return allPros.find(p => p.id === user.id || p.email === user.email) || null;
+  }, [allPros, user]);
 
   const markAsRead = (proId: string) => {
     if (!user) return;
@@ -413,10 +470,7 @@ export default function App() {
     const me = allPros.find(p => p.id === user.id) || allPros.find(p => p.email === user.email);
     if (me) {
       setSelectedPro(me);
-      setSelectedCat(null);
-      setSelectedSub(null);
-      setStep(3);
-      setTab(0);
+      setShowProProfileManager(true);
     }
   };
 
@@ -503,7 +557,11 @@ export default function App() {
   const handleSubSelect = (sub: string, cat: Category) => {
     setSurveySub(sub);
     setSurveyCat(cat);
-    setShowSurvey(true);
+    setSurveyAnswers(null);
+    setShowSurvey(false);
+    setSelectedCat(cat);
+    setSelectedSub(sub);
+    setStep(5);
   };
 
   const handleSurveyComplete = (data: any) => {
@@ -512,6 +570,7 @@ export default function App() {
       setSearch(surveySub);
       setSelectedSub(surveySub);
       if (surveyCat) setSelectedCat(surveyCat);
+      setSurveyAnswers(data);
       setStep(4); // Go to results
     }
   };
@@ -523,6 +582,7 @@ export default function App() {
     setSelectedSub(null);
     setSelectedPro(null);
     setAiFeedback(null);
+    setSurveyAnswers(null);
     setSearch('');
   };
 
@@ -564,6 +624,13 @@ export default function App() {
 
   const goBack = () => {
     if (modal) { setModal(null); return; }
+    if (step === 5) {
+      setStep(1);
+      setSurveySub(null);
+      setSurveyCat(null);
+      setSurveyAnswers(null);
+      return;
+    }
     if (step === 4) {
       setStep(1);
       setSelectedSub(null);
@@ -966,6 +1033,23 @@ export default function App() {
     return <AuthScreen onAuthSuccess={handleAuthSuccess} onJoinPro={() => setIsOnboarding(true)} />;
   }
 
+  if (showProProfileManager && currentProfessional) {
+    return (
+      <AppContainer>
+        <div className="flex-1 overflow-y-auto">
+          <ProProfileManagement
+            pro={currentProfessional}
+            jobs={allJobs}
+            onBack={() => setShowProProfileManager(false)}
+            onUpdate={handleUpdatePro}
+            onUpdateJob={handleUpdateJobPhotos}
+            lang={lang}
+          />
+        </div>
+      </AppContainer>
+    );
+  }
+
   return (
     <AppContainer>
       <div className="flex-1 overflow-y-auto pb-[68px]">
@@ -974,11 +1058,11 @@ export default function App() {
           <>
             {user?.type === 'professional' ? (
               <ProDashboard 
-                pro={allPros.find(p => p.id === user.id) || allPros[0]}
+                pro={currentProfessional || allPros[0]}
                 isEmergencyActive={isProEmergencyActive}
                 onToggleEmergency={toggleEmergency}
                 allJobs={allJobs}
-                onEditProfile={() => setModal('edit-profile')}
+                onEditProfile={handleViewMyProfile}
                 onViewProfile={handleViewMyProfile}
                 onTabChange={handleTabChange}
                 lang={lang}
@@ -1271,34 +1355,83 @@ export default function App() {
             {step === 1 && selectedCat && (
               <div className="animate-in slide-in-from-right duration-300 bg-[#f4f7f7] min-h-screen flex flex-col">
                 {/* Header */}
-                <div className="bg-gradient-to-b from-[#1a4d4d] to-[#2d5a5a] px-6 pt-5 pb-12 rounded-b-[40px] shadow-xl shadow-teal-900/20 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -mr-24 -mt-24 blur-3xl" />
-                  
-                  <div className="flex items-center justify-between relative z-10 mb-4">
-                    <button onClick={goBack} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white active:scale-90 transition-transform">
+                <div
+                  className="px-6 pt-5 pb-9 rounded-b-[34px] shadow-xl relative overflow-hidden"
+                  style={{
+                    background: `linear-gradient(145deg, #173f3f 0%, #245f5c 54%, ${selectedCat.color} 145%)`,
+                    boxShadow: `0 24px 46px -28px ${selectedCat.color}, 0 18px 30px -26px rgba(15,23,42,0.75)`
+                  }}
+                >
+                  <div className="absolute -top-20 -right-16 w-56 h-56 rounded-full bg-white/10 blur-3xl" />
+                  <div className="absolute -bottom-24 -left-14 w-56 h-56 rounded-full blur-3xl" style={{ backgroundColor: `${selectedCat.color}55` }} />
+                  <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.14),transparent_42%,rgba(255,255,255,0.08))]" />
+
+                  <div className="flex items-center justify-between relative z-10 mb-7">
+                    <button onClick={goBack} className="w-10 h-10 rounded-2xl bg-white/12 border border-white/15 backdrop-blur-md flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg shadow-black/10">
                       <ChevronLeft className="w-5 h-5" />
                     </button>
-                    
-                    <div className="w-9 h-9" /> {/* Spacer to keep title centered if needed, or just empty */}
+
+                    <div className="px-3 py-1.5 rounded-full bg-white/12 border border-white/15 backdrop-blur-md text-[10px] font-black text-white/85 uppercase tracking-[0.16em]">
+                      Explore
+                    </div>
                   </div>
 
-                  <div className="text-center relative z-10">
-                    <h3 className="text-white text-[28px] font-black leading-tight tracking-tight mb-1">
+                  <div className="relative z-10 flex items-end gap-4">
+                    <div className="w-20 h-20 rounded-[26px] bg-white/14 border border-white/18 backdrop-blur-md flex items-center justify-center shrink-0 shadow-2xl shadow-black/10">
                       {(() => {
-                        let label = selectedCat?.label?.replace('\n', ' ') || '';
-                        if (selectedCat?.id === 'home') {
-                          label = label.replace('&', ' and ');
+                        const props = { className: "w-9 h-9 text-white", strokeWidth: 2.3 };
+                        switch (selectedCat.id) {
+                          case 'beauty': return <Sparkles {...props} />;
+                          case 'auto': return <Truck {...props} />;
+                          case 'events': return <Music {...props} />;
+                          case 'edu': return <BookOpen {...props} />;
+                          case 'tech': return <Monitor {...props} />;
+                          case 'pets': return <Dog {...props} />;
+                          case 'health': return <Dumbbell {...props} />;
+                          case 'legal': return <Scale {...props} />;
+                          case 'garden': return <TreeDeciduous {...props} />;
+                          case 'office': return <Briefcase {...props} />;
+                          case 'life': return <Utensils {...props} />;
+                          default: return <Construction {...props} />;
                         }
-                        return label ? (label.charAt(0).toUpperCase() + label.slice(1).toLowerCase()) : '';
                       })()}
-                    </h3>
-                    <p className="text-white/80 text-[14px] font-normal mb-2">
-                      {t('find_pro')}
-                    </p>
+                    </div>
+
+                    <div className="min-w-0 flex-1 pb-1">
+                      <h3 className="text-white text-[26px] font-black leading-[1.04] tracking-tight mb-2 drop-shadow-sm">
+                        {(() => {
+                          let label = selectedCat?.label?.replace('\n', ' ') || '';
+                          if (selectedCat?.id === 'home') {
+                            label = label.replace('&', ' and ');
+                          }
+                          return label ? (label.charAt(0).toUpperCase() + label.slice(1).toLowerCase()) : '';
+                        })()}
+                      </h3>
+                      <p className="text-white/82 text-[13px] font-medium leading-snug">
+                        {t('find_pro')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 grid grid-cols-2 gap-2 mt-6">
+                    <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                      <div className="text-[18px] leading-none font-black text-white">{selectedCat.subs.length}</div>
+                      <div className="text-[9px] font-black text-white/65 uppercase tracking-[0.14em] mt-1">
+                        {lang === 'ro' ? 'Servicii' : 'Services'}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                      <div className="text-[18px] leading-none font-black text-white">
+                        {allPros.filter(p => p.catId === selectedCat.id).length}
+                      </div>
+                      <div className="text-[9px] font-black text-white/65 uppercase tracking-[0.14em] mt-1">
+                        {lang === 'ro' ? 'Profesioniști' : 'Trusted pros'}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex-1 px-6 pt-8 pb-10">
+                <div className="flex-1 px-6 pt-6 pb-10">
                   <div className="flex flex-col gap-3.5">
                     {selectedCat.subs.map((sb) => {
                       const proList = allPros.filter(p => p.catId === selectedCat.id && p.sub === sb);
@@ -1632,6 +1765,13 @@ export default function App() {
                   )}
                 </div>
               )
+            )} 
+            {step === 5 && surveySub && (
+              <SearchSurvey
+                subcategory={surveySub}
+                onClose={goBack}
+                onComplete={handleSurveyComplete}
+              />
             )}
             {step === 4 && selectedCat && user && (
               <SearchResultsScreen 
@@ -1658,6 +1798,7 @@ export default function App() {
                 onShowInfo={() => setShowEmergencyInfo(true)}
                 user={user}
                 aiFeedback={aiFeedback}
+                surveyAnswers={surveyAnswers}
                 lang={lang}
               />
               )}
@@ -1675,6 +1816,7 @@ export default function App() {
               onAction={handleJobAction} 
               onChat={(p) => { setSelectedPro(p); setModal('chat'); markAsRead(p.id); }} 
               onReview={(j) => { setReviewJob(j); setModal('review'); }} 
+              professionals={allPros}
               lang={lang}
             />
           </div>
@@ -1682,19 +1824,38 @@ export default function App() {
 
         {/* MESSAGES TAB */}
         {tab === 2 && (
-          <div className="animate-in fade-in duration-500 bg-[#f8fcfb] min-h-screen">
-            <div className="bg-gradient-to-b from-[#1a4d4d] to-[#2d5a5a] px-6 pt-5 pb-12 rounded-b-[40px] shadow-xl shadow-teal-900/20 relative overflow-hidden mb-6">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -mr-24 -mt-24 blur-3xl" />
+          <div className="animate-in fade-in duration-500 bg-[#f4f7f7] min-h-screen pb-24">
+            <div className="px-6 pt-5 pb-7 rounded-b-[34px] shadow-xl relative overflow-hidden mb-4 bg-gradient-to-br from-[#173f3f] via-[#245f5c] to-[#2f8a7f]">
+              <div className="absolute -top-20 -right-16 w-56 h-56 bg-white/10 rounded-full blur-3xl" />
+              <div className="absolute -bottom-28 -left-16 w-64 h-64 bg-teal-300/20 rounded-full blur-3xl" />
+              <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.14),transparent_42%,rgba(255,255,255,0.08))]" />
               
-              <div className="flex items-center justify-between relative z-10 mb-1">
-                <h2 className="text-[32px] font-black text-white tracking-tight">{t('messages')}</h2>
-                <button className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white active:scale-90 transition-transform">
+              <div className="flex items-center justify-between relative z-10 mb-5">
+                <div>
+                  <div className="text-[10px] font-black text-white/55 uppercase tracking-[0.18em] mb-1">Inbox</div>
+                  <h2 className="text-[31px] font-black text-white tracking-tight leading-none">{t('messages')}</h2>
+                </div>
+                <button className="w-10 h-10 rounded-2xl bg-white/12 border border-white/15 backdrop-blur-md flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg shadow-black/10">
                   <Search className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-[15px] text-white/70 font-medium relative z-10 mb-2">{lang === 'ro' ? 'Conversații cu profesioniștii tăi' : 'Chat with your professionals'}</p>
+              <div className="relative z-10 grid grid-cols-3 gap-2 mt-4">
+                <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                  <div className="text-[18px] leading-none font-black text-white">{allMsgs.filter(m => m.from === user.id || m.to === user.id).length}</div>
+                  <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">{lang === 'ro' ? 'Mesaje' : 'Messages'}</div>
+                </div>
+                <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                  <div className="text-[18px] leading-none font-black text-white">{unreadMsgs}</div>
+                  <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">{lang === 'ro' ? 'Necitite' : 'Unread'}</div>
+                </div>
+                <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                  <div className="text-[18px] leading-none font-black text-white">{allPros.filter(p => allMsgs.some(m => m.from === p.id || m.to === p.id)).length}</div>
+                  <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">{lang === 'ro' ? 'Contacte' : 'Contacts'}</div>
+                </div>
+              </div>
             </div>
-            <div className="px-5">
+            <div className="px-5 space-y-3">
               {(() => {
                 const myM = allMsgs.filter(m => m.from === user.id || m.to === user.id);
                 const convs: Record<string, { oid: string, name: string, msgs: Message[], last: string }> = {};
@@ -1713,9 +1874,12 @@ export default function App() {
                 
                 if (sorted.length === 0) {
                   return (
-                    <div className="text-center py-16 text-slate-300">
-                      <MessageSquare className="w-10 h-10 mx-auto mb-2" />
-                      <p className="font-bold text-slate-500">No messages yet</p>
+                    <div className="text-center py-14 px-5 bg-white/64 backdrop-blur-xl rounded-[28px] border border-white/75 shadow-[0_22px_46px_-34px_rgba(15,23,42,0.82)]">
+                      <div className="w-14 h-14 rounded-2xl bg-white/70 border border-white shadow-sm flex items-center justify-center mx-auto mb-3">
+                        <MessageSquare className="w-7 h-7 text-brand" />
+                      </div>
+                      <p className="font-black text-slate-700">No messages yet</p>
+                      <p className="text-[12px] font-medium text-slate-400 mt-1">Your conversations will appear here.</p>
                     </div>
                   );
                 }
@@ -1724,6 +1888,7 @@ export default function App() {
                   const lm = c.msgs[c.msgs.length - 1];
                   const pi = allPros.findIndex(p => p.id === c.oid);
                   const p = allPros.find(x => x.id === c.oid);
+                  const unreadInConv = c.msgs.filter(m => m.to === user.id && !m.read).length;
                   return (
                     <div 
                       key={c.oid}
@@ -1733,10 +1898,13 @@ export default function App() {
                         setModal('chat'); 
                         markAsRead(c.oid);
                       }}
-                      className="flex gap-3.5 py-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors"
+                      className="relative flex gap-3.5 p-4 cursor-pointer bg-white/64 backdrop-blur-xl rounded-[28px] border border-white/75 shadow-[0_22px_46px_-34px_rgba(15,23,42,0.82)] overflow-hidden group active:scale-[0.99] transition-all"
                     >
+                      <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.88),rgba(255,255,255,0.42)_48%,rgba(255,255,255,0.74))] pointer-events-none" />
+                      <div className="absolute -top-16 -right-14 h-36 w-36 rounded-full bg-white/55 blur-3xl pointer-events-none" />
+                      <div className="absolute -bottom-16 -left-14 h-36 w-36 rounded-full bg-teal-200/20 blur-3xl pointer-events-none" />
                       <div 
-                        className="w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 overflow-hidden"
+                        className="relative z-[2] w-14 h-14 rounded-[20px] flex items-center justify-center text-xl shrink-0 overflow-hidden border border-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_-16px_rgba(15,23,42,0.75)]"
                         style={{ backgroundColor: AVC[(pi >= 0 ? pi : 0) % 8] }}
                       >
                         {p?.img ? (
@@ -1745,12 +1913,26 @@ export default function App() {
                           pi >= 0 ? AVE[pi % 8] : '👤'
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-bold text-slate-800 truncate">{c.name}</span>
-                          <span className="text-[10px] text-slate-400">{new Date(lm.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="relative z-[2] flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <span className="block text-[16px] font-black text-slate-950 truncate leading-tight">{c.name}</span>
+                            <span className="inline-flex mt-1 px-2 py-1 bg-white/58 backdrop-blur-md text-slate-500 rounded-lg text-[9px] font-black border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                              {p?.sub ? ((translations[lang] as any).subs?.[p.sub] || p.sub) : 'Conversation'}
+                            </span>
+                          </div>
+                          <div className="shrink-0 flex flex-col items-end gap-1">
+                            <span className="h-7 px-2.5 rounded-full bg-white/52 backdrop-blur-md border border-white/70 text-[10px] text-slate-500 font-black flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                              {new Date(lm.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {unreadInConv > 0 && (
+                              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-brand text-white text-[10px] font-black flex items-center justify-center">
+                                {unreadInConv}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5 truncate">
+                        <div className="mt-3 h-10 px-3 rounded-2xl bg-white/45 backdrop-blur-md border border-white/70 text-[12px] text-slate-500 font-semibold flex items-center truncate shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
                           {lm.from === user.id ? 'You: ' : ''}{lm.text}
                         </div>
                       </div>
@@ -1762,8 +1944,187 @@ export default function App() {
           </div>
         )}
 
-        {/* PROFILE TAB */}
-        {tab === 3 && (
+        {/* PROFILE TAB - CUSTOMER */}
+        {tab === 3 && user.type === 'customer' && (
+          <div className="animate-in fade-in duration-500 bg-[#f4f7f7] min-h-screen pb-24 relative">
+            <div className="px-6 pt-5 pb-7 rounded-b-[34px] shadow-xl relative overflow-hidden bg-gradient-to-br from-[#173f3f] via-[#245f5c] to-[#2f8a7f]">
+              <div className="absolute -top-20 -right-16 w-56 h-56 bg-white/10 rounded-full blur-3xl" />
+              <div className="absolute -bottom-28 -left-16 w-64 h-64 bg-teal-300/20 rounded-full blur-3xl" />
+              <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.14),transparent_42%,rgba(255,255,255,0.08))]" />
+
+              <div className="relative z-10 flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <div className="text-[10px] font-black text-white/55 uppercase tracking-[0.18em] mb-1">Account</div>
+                  <h2 className="text-[31px] font-black text-white tracking-tight leading-none">{t('my_profile')}</h2>
+                  <p className="text-[13px] text-white/72 font-medium mt-3">{t('manage_account')}</p>
+                </div>
+                <button
+                  onClick={() => setModal('notifications')}
+                  className="w-10 h-10 rounded-2xl bg-white/12 border border-white/15 backdrop-blur-md flex items-center justify-center text-white relative active:scale-90 transition-transform shadow-lg shadow-black/10"
+                >
+                  <Bell className="w-5 h-5" />
+                  {(unreadMsgs > 0 || pendingCnt > 0) && (
+                    <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white/70" />
+                  )}
+                </button>
+              </div>
+
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="w-18 h-18 rounded-[26px] bg-white/14 border border-white/18 backdrop-blur-md flex items-center justify-center shrink-0 text-3xl shadow-2xl shadow-black/10 overflow-hidden">
+                  {user.img ? (
+                    <img src={user.img} alt={user.name} className="w-full h-full object-cover" />
+                  ) : (
+                    '👤'
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-white text-[20px] font-black leading-tight truncate">{user.name}</div>
+                  <div className="text-white/65 text-[12px] font-bold truncate mt-1">{user.email}</div>
+                  <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-white/12 border border-white/14 text-white/80 text-[9px] font-black uppercase tracking-[0.12em]">
+                    <Shield className="w-3 h-3" /> Customer
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative z-10 grid grid-cols-3 gap-2 mt-6">
+                <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                  <div className="text-[18px] leading-none font-black text-white">{myJobs.length}</div>
+                  <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">{t('jobs')}</div>
+                </div>
+                <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                  <div className="text-[18px] leading-none font-black text-white">{unreadMsgs}</div>
+                  <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">Unread</div>
+                </div>
+                <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+                  <div className="text-[18px] leading-none font-black text-white">{myJobs.filter(j => j.status === 'completed').length}</div>
+                  <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">Done</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 mt-5 space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setTab(1)} className="bg-white rounded-[24px] border border-slate-100 p-4 text-left shadow-xl shadow-slate-200/70 active:scale-[0.98] transition-all">
+                  <div className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-brand mb-3">
+                    <Briefcase className="w-5 h-5" />
+                  </div>
+                  <div className="text-[15px] font-black text-slate-950">My jobs</div>
+                  <div className="text-[11px] font-bold text-slate-400 mt-0.5">{pendingCnt} active</div>
+                </button>
+                <button onClick={() => setTab(2)} className="bg-white rounded-[24px] border border-slate-100 p-4 text-left shadow-xl shadow-slate-200/70 active:scale-[0.98] transition-all">
+                  <div className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-brand mb-3">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div className="text-[15px] font-black text-slate-950">Messages</div>
+                  <div className="text-[11px] font-bold text-slate-400 mt-0.5">{unreadMsgs} unread</div>
+                </button>
+              </div>
+
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAdminPanel(true)}
+                  className="w-full rounded-[26px] bg-gradient-to-br from-[#173f3f] via-[#245f5c] to-[#2f8a7f] border border-white/40 p-4 text-left shadow-xl shadow-teal-900/20 active:scale-[0.98] transition-all overflow-hidden relative"
+                >
+                  <div className="absolute -top-16 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+                  <div className="relative flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white/14 border border-white/18 flex items-center justify-center text-white">
+                      <Shield className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[16px] font-black text-white">Admin Panel</div>
+                      <div className="text-[11px] font-bold text-white/65 mt-0.5">Cereri, oferte, pro, joburi si verificari</div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-white/70" />
+                  </div>
+                </button>
+              )}
+
+              {[
+                {
+                  title: 'ACCOUNT',
+                  items: [
+                    { icon: UserIcon, label: 'Edit profile', desc: 'Name, email and photo', onClick: () => setModal('edit-profile') },
+                    { icon: Bell, label: t('notifications'), desc: 'Messages and booking alerts', onClick: () => setModal('notifications') },
+                  ]
+                },
+                {
+                  title: 'TRUST & SAFETY',
+                  items: [
+                    { icon: Shield, label: t('privacy'), desc: 'Privacy and security settings', onClick: () => setModal('privacy') },
+                    { icon: CheckCircle2, label: 'Closer Guarantee', desc: 'Protected bookings and support', onClick: () => setModal('help') },
+                  ]
+                },
+                {
+                  title: t('preferences'),
+                  items: [
+                    { icon: Globe, label: t('language'), desc: lang === 'en' ? 'English' : 'Romana', onClick: () => setLang(prev => prev === 'en' ? 'ro' : 'en') },
+                    { icon: MessageSquare, label: t('help'), desc: 'Help center and support', onClick: () => setModal('help') },
+                  ]
+                }
+              ].map((section, sIdx) => (
+                <div key={sIdx}>
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.16em] mb-2 px-1">{section.title}</h3>
+                  <div className="bg-white rounded-[28px] border border-slate-100 shadow-xl shadow-slate-200/70 overflow-hidden">
+                    {section.items.map((item, iIdx) => (
+                      <button
+                        key={item.label}
+                        onClick={item.onClick}
+                        className={cn(
+                          "w-full flex items-center gap-3 p-4 text-left active:scale-[0.99] transition-all",
+                          iIdx !== section.items.length - 1 && "border-b border-slate-50"
+                        )}
+                      >
+                        <div className="w-11 h-11 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-brand shrink-0">
+                          <item.icon className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[15px] font-black text-slate-900 truncate">{item.label}</div>
+                          <div className="text-[11px] font-bold text-slate-400 truncate mt-0.5">{item.desc}</div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-slate-300 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={handleLogout}
+                className="w-full h-13 rounded-[22px] bg-white border border-red-100 text-red-500 font-black text-[13px] flex items-center justify-center gap-2 shadow-xl shadow-slate-200/70 active:scale-[0.98] transition-all uppercase tracking-[0.12em]"
+              >
+                <LogOut className="w-4 h-4" /> Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PROFILE TAB - PROFESSIONAL */}
+        {tab === 3 && user.type !== 'customer' && (
+          <ProProfileTab
+            user={user}
+            pro={currentProfessional}
+            lang={lang}
+            myJobs={myJobs}
+            unreadMsgs={unreadMsgs}
+            pendingCnt={pendingCnt}
+            isEmergencyActive={isProEmergencyActive}
+            isAdmin={isAdmin}
+            onToggleEmergency={toggleEmergency}
+            onViewProfile={handleViewMyProfile}
+            onEditProfile={handleViewMyProfile}
+            onNotifications={() => setModal('notifications')}
+            onPrivacy={() => setModal('privacy')}
+            onHelp={() => setModal('help')}
+            onBoost={() => setModal('boost' as any)}
+            onAdmin={() => setShowAdminPanel(true)}
+            onLogout={handleLogout}
+            onLanguage={() => setLang(prev => prev === 'en' ? 'ro' : 'en')}
+            onJobs={() => setTab(1)}
+          />
+        )}
+
+        {/* PROFILE TAB - LEGACY PROFESSIONAL */}
+        {false && tab === 3 && user.type !== 'customer' && (
           <div className="animate-in fade-in duration-500 bg-[#f8f9fa] min-h-screen pb-24 relative">
             {/* Header */}
             <div className="bg-gradient-to-b from-[#1a4d4d] to-[#2d5a5a] px-6 pt-5 pb-12 rounded-b-[40px] shadow-xl shadow-teal-900/20 relative overflow-hidden">
@@ -1867,6 +2228,25 @@ export default function App() {
                 )}
 
                 {/* Menu Sections */}
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowAdminPanel(true)}
+                    className="w-full mb-5 rounded-[26px] bg-gradient-to-br from-[#173f3f] via-[#245f5c] to-[#2f8a7f] border border-white/40 p-4 text-left shadow-xl shadow-teal-900/20 active:scale-[0.98] transition-all overflow-hidden relative"
+                  >
+                    <div className="absolute -top-16 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+                    <div className="relative flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-white/14 border border-white/18 flex items-center justify-center text-white">
+                        <Shield className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[16px] font-black text-white">Admin Panel</div>
+                        <div className="text-[11px] font-bold text-white/65 mt-0.5">Cereri, oferte, pro, joburi si verificari</div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-white/70" />
+                    </div>
+                  </button>
+                )}
+
                 <div className="space-y-4">
                   {[
                     {
@@ -1965,6 +2345,17 @@ export default function App() {
         unreadMsgs={unreadMsgs} 
         lang={lang}
       />
+
+      {showAdminPanel && user && isAdmin && (
+        <AdminPanel
+          user={user}
+          lang={lang}
+          allPros={allPros}
+          allJobs={allJobs}
+          allMessages={allMsgs}
+          onClose={() => setShowAdminPanel(false)}
+        />
+      )}
 
       {/* MODALS */}
       <Modal 
@@ -2415,16 +2806,18 @@ export default function App() {
             j.isEmergency && 
             ['hired', 'active', 'finish_requested'].includes(j.status)
           );
-          const themeClass = hasEmergencyJob ? "bg-orange-500" : "bg-brand";
+          const themeClass = hasEmergencyJob
+            ? "bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500"
+            : "bg-gradient-to-br from-[#173f3f] via-[#245f5c] to-[#2f8a7f]";
           
           return (
             <div className="flex flex-col h-full bg-[#f8f9fa]">
               <div className={cn(themeClass, "p-3 px-5 flex items-center gap-3.5 shadow-lg relative z-10")}>
-            <button onClick={() => setModal(null)} className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-white active:scale-90 transition-transform">
+            <button onClick={() => setModal(null)} className="w-10 h-10 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center text-white active:scale-90 transition-transform">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div 
-              className="w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm overflow-hidden border-2 border-white/20 shrink-0"
+              className="w-11 h-11 rounded-[18px] flex items-center justify-center text-lg overflow-hidden border border-white/25 shrink-0 shadow-sm"
               style={{ backgroundColor: AVC[allPros.indexOf(selectedPro!) % 8] || '#e2e8f0' }}
             >
               {selectedPro?.img ? (
@@ -2444,7 +2837,7 @@ export default function App() {
             <button 
               onClick={() => setModal('hire')}
               className={cn(
-                "px-4 py-1.5 rounded-full text-[12px] font-black transition-all active:scale-95 shadow-lg",
+                "px-4 py-2 rounded-full text-[10px] font-black transition-all active:scale-95 shadow-lg",
                 hasEmergencyJob ? "bg-white text-orange-500 shadow-orange-900/20" : "bg-white text-brand shadow-brand/20"
               )}
             >
@@ -2463,7 +2856,7 @@ export default function App() {
                     <button 
                       onClick={() => hasActiveJob ? setIsCalling('voice') : setShowCallLimitInfo(true)}
                       className={cn(
-                        "w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90",
+                        "w-10 h-10 rounded-2xl border border-white/15 flex items-center justify-center transition-all active:scale-90",
                         hasActiveJob ? "bg-white/20 text-white hover:bg-white/30" : "bg-white/10 text-white/40"
                       )}
                     >
@@ -2472,7 +2865,7 @@ export default function App() {
                     <button 
                       onClick={() => hasActiveJob ? setIsCalling('video') : setShowCallLimitInfo(true)}
                       className={cn(
-                        "w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90",
+                        "w-10 h-10 rounded-2xl border border-white/15 flex items-center justify-center transition-all active:scale-90",
                         hasActiveJob ? "bg-white/20 text-white hover:bg-white/30" : "bg-white/10 text-white/40"
                       )}
                     >
@@ -2484,16 +2877,16 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f8f9fa]">
             {currentConv.map(m => {
               const mine = m.from === user.id;
               return (
                 <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                   <div className={cn(
-                    "max-w-[75%] p-3 px-4 rounded-2xl text-[13px] leading-relaxed shadow-sm",
+                    "max-w-[76%] p-3 px-4 rounded-[22px] text-[13px] leading-relaxed shadow-sm",
                     mine 
-                      ? (m.isEmergency || hasEmergencyJob ? "bg-orange-500 text-white rounded-br-none" : "bg-brand text-white rounded-br-none")
-                      : "bg-white text-slate-800 rounded-bl-none"
+                      ? (m.isEmergency || hasEmergencyJob ? "bg-orange-500 text-white rounded-br-md" : "bg-brand text-white rounded-br-md")
+                      : "bg-white text-slate-800 rounded-bl-md"
                   )}>
                     {m.text}
                   </div>
@@ -2503,9 +2896,9 @@ export default function App() {
             <div ref={chatEndRef} />
           </div>
 
-          <div className="p-3.5 px-4 bg-white border-t border-slate-200 flex gap-2">
+          <div className="p-3.5 px-4 bg-white border-t border-slate-100 flex gap-2">
             <input 
-              className="flex-1 bg-slate-50 border-1.5 border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand"
+              className="flex-1 bg-white border border-slate-100 rounded-2xl px-4 py-3 text-sm outline-none focus:border-brand shadow-sm"
               placeholder="Type a message..."
               value={chatMsg}
               onChange={(e) => setChatMsg(e.target.value)}
@@ -2519,7 +2912,7 @@ export default function App() {
             <button 
               onClick={handleSendMsg}
               className={cn(
-                "w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all",
+                "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all",
                 hasEmergencyJob ? "bg-orange-500 shadow-orange-200" : "bg-brand shadow-brand/20"
               )}
             >
@@ -2823,7 +3216,7 @@ export default function App() {
         </div>
       )}
 
-      {showSurvey && surveySub && (
+      {showSurvey && step !== 5 && surveySub && (
         <SearchSurvey 
           subcategory={surveySub} 
           onClose={() => setShowSurvey(false)} 

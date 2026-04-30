@@ -42,6 +42,14 @@ export interface Slot {
   times: string[];
 }
 
+export interface ServicePackage {
+  name: 'Basic' | 'Standard' | 'Premium';
+  price: number;
+  unit: string;       // e.g. '/hr', '/job', '/day'
+  description: string;
+  features: string[];
+}
+
 export interface Professional {
   id: string;
   name: string;
@@ -73,6 +81,64 @@ export interface Professional {
   teamSize?: string;
   verifiedCredentials?: { type: string, label: string }[];
   faqs?: { q: string, a: string }[];
+  description?: string;
+  experienceYears?: number;
+  fixedPrices?: { service: string, price: number, unit: string }[];
+  packages?: ServicePackage[];
+  coverageRadiusKm?: number;
+  availability?: Record<string, string[]>;
+  categories?: { id?: string; catId: string; sub: string; isPrimary?: boolean }[];
+  _dbId?: string;
+  lat?: number;
+  lng?: number;
+  address?: string;
+  badge?: 'rising_star' | 'top_rated' | null;
+  monthlyGoal?: number;
+}
+
+export interface ServiceRequest {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  catId: string;
+  sub: string;
+  description: string;
+  budgetMax?: number;
+  slotPreference?: string;
+  status: 'open' | 'closed';
+  created: string;
+  quotes?: Quote[];
+}
+
+export interface Quote {
+  id: string;
+  requestId: string;
+  proId: string;
+  proDbId?: string;
+  proName: string;
+  proEmail: string;
+  proImg?: string;
+  price: number;
+  unit: string;
+  message: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created: string;
+}
+
+export interface Booking {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  proId: string;
+  proDbId?: string;
+  proName: string;
+  date: string;       // ISO date string YYYY-MM-DD
+  timeSlot: string;   // e.g. "10:00"
+  description: string;
+  status: 'pending' | 'confirmed' | 'declined' | 'cancelled';
+  created: string;
 }
 
 export type JobStatus = 'hired' | 'active' | 'finish_requested' | 'completed' | 'cancelled' | 'declined';
@@ -110,4 +176,5 @@ export interface Message {
   time: string;
   read?: boolean;
   isEmergency?: boolean;
+  imageUrl?: string;
 }

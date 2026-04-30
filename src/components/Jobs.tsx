@@ -31,9 +31,10 @@ interface JobsListProps {
   onChat: (pro: Professional) => void;
   onReview: (job: Job) => void;
   lang?: Language;
+  professionals?: Professional[];
 }
 
-export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' }: JobsListProps) {
+export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en', professionals = PROS }: JobsListProps) {
   const t = (key: keyof typeof translations['en']) => (translations[lang] as any)[key] || key;
   const tSub = (sub: string) => (translations[lang] as any).subs?.[sub] || sub;
   const [activeTab, setActiveTab] = useState<'All' | 'Upcoming' | 'Completed' | 'Cancelled'>('All');
@@ -92,7 +93,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
 
   if (jobs.length === 0) {
     return (
-      <div className="text-center py-12 px-5 text-slate-400">
+      <div className="bg-[#f4f7f7] min-h-screen px-6 pt-10 pb-24 text-center text-slate-400">
         <Briefcase className="w-10 h-10 mx-auto mb-2.5 text-slate-300" />
         <p className="font-bold text-[15px] text-slate-500">{lang === 'ro' ? 'Niciun serviciu încă' : 'No jobs yet'}</p>
       </div>
@@ -100,28 +101,33 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
   }
 
   return (
-    <div className="bg-[#f8fcfb] min-h-screen pb-24">
+    <div className="bg-[#f4f7f7] min-h-screen pb-24">
       {/* Header */}
-      <div className="bg-gradient-to-b from-[#1a4d4d] to-[#2d5a5a] px-6 pt-5 pb-12 rounded-b-[40px] shadow-xl shadow-teal-900/20 relative overflow-hidden sticky top-0 z-20">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -mr-24 -mt-24 blur-3xl" />
+      <div className="px-6 pt-5 pb-7 rounded-b-[34px] shadow-xl relative overflow-hidden sticky top-0 z-20 bg-gradient-to-br from-[#173f3f] via-[#245f5c] to-[#2f8a7f]">
+        <div className="absolute -top-20 -right-16 w-56 h-56 bg-white/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-28 -left-16 w-64 h-64 bg-teal-300/20 rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.14),transparent_42%,rgba(255,255,255,0.08))]" />
         
-        <div className="flex items-center justify-between relative z-10 mb-1">
-          <h1 className="text-[32px] font-black text-white tracking-tight">{t('my_jobs')}</h1>
+        <div className="flex items-center justify-between relative z-10 mb-5">
+          <div>
+            <div className="text-[10px] font-black text-white/55 uppercase tracking-[0.18em] mb-1">Dashboard</div>
+            <h1 className="text-[31px] font-black text-white tracking-tight leading-none">{t('my_jobs')}</h1>
+          </div>
           <div className="flex gap-2">
             <button 
               onClick={() => setShowSearch(!showSearch)}
               className={cn(
-                "w-9 h-9 rounded-xl flex items-center justify-center text-white active:scale-90 transition-transform",
-                showSearch ? "bg-white text-brand" : "bg-white/10"
+                "w-10 h-10 rounded-2xl border border-white/15 backdrop-blur-md flex items-center justify-center active:scale-90 transition-all shadow-lg shadow-black/10",
+                showSearch ? "bg-white text-brand" : "bg-white/12 text-white"
               )}
             >
               <Search className="w-5 h-5" />
             </button>
             <div className="relative group">
-              <button className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white active:scale-90 transition-transform">
+              <button className="w-10 h-10 rounded-2xl bg-white/12 border border-white/15 backdrop-blur-md flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg shadow-black/10">
                 <SlidersHorizontal className="w-5 h-5" />
               </button>
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 hidden group-hover:block z-50">
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 hidden group-hover:block z-50 overflow-hidden">
                 <div className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-bottom border-slate-50">{lang === 'ro' ? 'Sortează după' : 'Sort By'}</div>
                 {(['date', 'price', 'name'] as const).map(s => (
                   <button
@@ -140,6 +146,21 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
           </div>
         </div>
         <p className="text-[15px] text-white/70 font-medium relative z-10 mb-2">{lang === 'ro' ? 'Urmărește, evaluează și rezervă din nou' : 'Track, review and book again'}</p>
+
+        <div className="relative z-10 grid grid-cols-3 gap-2 mb-4 mt-4">
+          <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+            <div className="text-[18px] leading-none font-black text-white">{counts.Upcoming}</div>
+            <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">Active</div>
+          </div>
+          <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+            <div className="text-[18px] leading-none font-black text-white">{counts.Completed}</div>
+            <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">{lang === 'ro' ? 'Finalizate' : 'Done'}</div>
+          </div>
+          <div className="rounded-2xl bg-white/12 border border-white/14 backdrop-blur-md px-3 py-2.5">
+            <div className="text-[18px] leading-none font-black text-white">£{stats.spent > 999 ? `${(stats.spent/1000).toFixed(1)}k` : stats.spent}</div>
+            <div className="text-[8px] font-black text-white/62 uppercase tracking-[0.12em] mt-1">{lang === 'ro' ? 'Total' : 'Spent'}</div>
+          </div>
+        </div>
 
         {showSearch && (
           <div className="relative z-10 mb-2 animate-in slide-in-from-top duration-200">
@@ -163,25 +184,27 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
       </div>
 
       {/* Tabs - Moved below header */}
-      <div className="flex items-center gap-2 relative z-10 overflow-x-auto scrollbar-hide px-6 py-4 -mt-2">
+      <div className="grid grid-cols-4 gap-2 relative z-10 px-5 py-4 -mt-1">
         {(['All', 'Upcoming', 'Completed', 'Cancelled'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
             className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-bold whitespace-nowrap shadow-sm premium-touch",
+              "h-11 min-w-0 flex items-center justify-center gap-1 rounded-2xl px-2 text-[10px] font-black whitespace-nowrap shadow-sm premium-touch border overflow-hidden",
               activeTab === t 
-                ? "bg-[#1a4d4d] text-white shadow-[#1a4d4d]/20" 
-                : "bg-white text-slate-600 border border-slate-100"
+                ? "bg-[#1a4d4d] text-white shadow-[#1a4d4d]/20 border-[#1a4d4d]" 
+                : "bg-white/72 backdrop-blur-md text-slate-600 border-white/80"
             )}
           >
-            {t === 'All' ? (lang === 'ro' ? 'Toate' : 'All Jobs') : 
-             t === 'Upcoming' ? (lang === 'ro' ? 'Viitoare' : 'Upcoming') :
-             t === 'Completed' ? (lang === 'ro' ? 'Finalizate' : 'Completed') :
-             (lang === 'ro' ? 'Anulate' : 'Cancelled')}
+            <span className="min-w-0 truncate">
+              {t === 'All' ? (lang === 'ro' ? 'Toate' : 'All') : 
+               t === 'Upcoming' ? (lang === 'ro' ? 'Active' : 'Active') :
+               t === 'Completed' ? (lang === 'ro' ? 'Gata' : 'Done') :
+               (lang === 'ro' ? 'Anulate' : 'Cancel')}
+            </span>
             <span className={cn(
-              "px-1.5 py-0.5 rounded-md text-[9px] font-black",
-              activeTab === t ? "bg-white/20 text-white" : "bg-slate-100 text-slate-400"
+              "min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-black flex items-center justify-center shrink-0",
+              activeTab === t ? "bg-white/20 text-white" : "bg-slate-100/85 text-slate-400"
             )}>
               {counts[t]}
             </span>
@@ -190,10 +213,13 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
       </div>
 
       {/* Jobs List */}
-      <div className="px-6 space-y-6 pt-2">
+      <div className="px-6 space-y-5 pt-1">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[17px] font-black text-brand">{lang === 'ro' ? 'Servicii Recente' : 'Recent Jobs'}</h2>
-          <button className="text-[13px] font-bold text-brand flex items-center gap-1">
+          <div>
+            <h2 className="text-[18px] font-black text-brand">{lang === 'ro' ? 'Servicii Recente' : 'Recent Jobs'}</h2>
+            <p className="text-[11px] font-bold text-slate-400 mt-0.5">{filteredJobs.length} {lang === 'ro' ? 'rezultate' : 'results'}</p>
+          </div>
+          <button className="text-[12px] font-black text-brand flex items-center gap-1 bg-white border border-slate-100 px-3 py-2 rounded-full shadow-sm">
             {lang === 'ro' ? 'Vezi Istoric' : 'View History'} <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -202,8 +228,26 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
           const proRole = isPro(j);
           const otherName = proRole ? j.cName : j.pName;
           const statusKey = j.disputed ? 'disputed' : j.status;
-          const proIndex = PROS.findIndex(p => p.id === j.pId);
-          const p = PROS.find(x => x.id === j.pId);
+          const proIndex = professionals.findIndex(p => p.id === j.pId || p.email === j.pEmail);
+          const p = professionals.find(x => x.id === j.pId || x.email === j.pEmail) || {
+            id: j.pId,
+            name: j.pName,
+            email: j.pEmail,
+            catId: 'home',
+            sub: j.pSub,
+            rating: 0,
+            rc: 0,
+            jobs: 0,
+            loc: 'Northampton',
+            price: parseFloat(j.price) || 0,
+            unit: '',
+            v: { id: 0, dbs: 0, ins: 0 },
+            about: '',
+            svcs: [],
+            port: [],
+            revs: [],
+            slots: []
+          } as Professional;
           const avatarColor = AVC[(proIndex >= 0 ? proIndex : 0) % 8];
           const avatarImg = proRole ? null : p?.img;
 
@@ -211,21 +255,28 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
             <div 
               key={j.id} 
               className={cn(
-                "bg-white rounded-[15px] p-4 mb-4 shadow-[0_4px_15px_rgba(45,90,80,0.15)] relative overflow-hidden group border border-transparent premium-card",
-                j.isEmergency ? "border-orange-200 shadow-orange-100 bg-orange-50/30" : "hover:border-[#2D5A50]/20"
+                "bg-white rounded-[28px] p-4 mb-4 shadow-xl shadow-slate-200/70 relative overflow-hidden group border premium-card",
+                j.isEmergency ? "border-orange-100 bg-orange-50/50" : "border-slate-100"
               )}
             >
-              <div className="flex gap-2.5">
+              <div className={cn(
+                "absolute inset-x-8 top-0 h-1 rounded-b-full z-[1]",
+                j.isEmergency ? "bg-orange-500" :
+                j.status === 'completed' ? "bg-emerald-500" :
+                j.status === 'cancelled' || j.status === 'declined' ? "bg-red-500" :
+                "bg-[#1a4d4d]"
+              )} />
+              <div className="relative z-[2] flex gap-2.5">
                 {/* Avatar */}
                 <div className="relative shrink-0">
                   <div 
-                    className="w-12 h-12 rounded-[16px] overflow-hidden bg-slate-100 border-2 border-white shadow-sm"
+                    className="w-14 h-14 rounded-[20px] overflow-hidden bg-white border border-slate-100 shadow-md"
                     style={{ backgroundColor: !avatarImg ? avatarColor : undefined }}
                   >
                     {avatarImg ? (
                       <img src={avatarImg} alt={otherName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-lg">
+                        <div className="w-full h-full flex items-center justify-center text-xl">
                         {proRole ? '👤' : AVE[(proIndex >= 0 ? proIndex : 0) % 8]}
                       </div>
                     )}
@@ -241,17 +292,17 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-[13px] font-black text-brand truncate pr-1">{otherName}</h3>
-                      <div className="inline-flex px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded text-[8px] font-bold mt-0.5">
+                      <h3 className="text-[16px] font-black text-slate-950 truncate pr-1 leading-tight">{otherName}</h3>
+                      <div className="inline-flex px-2 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-black mt-1">
                         {tSub(j.pSub)}
                       </div>
                     </div>
                     <div className={cn(
-                      "px-1.5 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest shrink-0",
+                      "px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shrink-0 border",
                       j.isEmergency ? "bg-orange-500 text-white" : (
-                        j.status === 'completed' ? "bg-emerald-50 text-emerald-600" :
-                        j.status === 'cancelled' || j.status === 'declined' ? "bg-red-50 text-red-600" :
-                        j.status === 'hired' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
+                        j.status === 'completed' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                        j.status === 'cancelled' || j.status === 'declined' ? "bg-red-50 text-red-600 border-red-100" :
+                        j.status === 'hired' ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-orange-50 text-orange-600 border-orange-100"
                       )
                     )}>
                       {j.isEmergency ? 'URGENT' : (lang === 'ro' ? (statusKey === 'completed' ? 'FINALIZAT' : statusKey === 'cancelled' ? 'ANULAT' : statusKey === 'hired' ? 'ANGAJAT' : 'ACTIV') : STL[statusKey])}
@@ -267,25 +318,25 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                     <span className="text-[9px] font-black text-brand ml-0.5">{p?.rating || 0}</span>
                   </div>
 
-                  <div className="text-[14px] font-black text-brand mt-0.5">
+                  <div className="text-[18px] font-black text-brand mt-1 leading-none">
                     £{j.price}
                   </div>
                 </div>
               </div>
 
               {/* Job Details - Ultra Compact */}
-              <div className="mt-2.5 pt-2.5 border-t border-slate-50 flex flex-wrap gap-x-2.5 gap-y-0.5">
-                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-medium">
-                  <Calendar className="w-2.5 h-2.5 text-slate-400" />
-                  <span>{j.slot}</span>
+              <div className="relative z-[2] mt-3 pt-3 border-t border-slate-50 grid grid-cols-2 gap-2">
+                <div className="min-w-0 h-9 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 font-bold bg-slate-50 rounded-xl px-2">
+                  <Calendar className="w-3 h-3 text-brand shrink-0" />
+                  <span className="min-w-0 truncate">{j.slot}</span>
                   <span className="text-slate-300">·</span>
-                  <span>{new Date(j.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="shrink-0">{new Date(j.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-medium">
-                  <MapPin className="w-2.5 h-2.5 text-slate-400" />
-                  <span>{p?.loc.split(',')[0] || 'Northampton'}</span>
+                <div className="min-w-0 h-9 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 font-bold bg-slate-50 rounded-xl px-2">
+                  <MapPin className="w-3 h-3 text-brand shrink-0" />
+                  <span className="min-w-0 truncate">{p?.loc.split(',')[0] || 'Northampton'}</span>
                   <span className="text-slate-300">·</span>
-                  <span>2.3 km</span>
+                  <span className="shrink-0">2.3 km</span>
                 </div>
               </div>
 
@@ -296,7 +347,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                   {!(proRole ? j.pRev : j.rev) && (
                     <button 
                       onClick={() => onReview(j)}
-                      className="w-full py-1.5 bg-amber-50 border border-amber-100 text-amber-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-amber-100 transition-all"
+                      className="w-full py-2 bg-amber-50 border border-amber-100 text-amber-700 rounded-xl text-[10px] font-black flex items-center justify-center gap-1 hover:bg-amber-100 transition-all"
                     >
                       <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" /> 
                        {proRole ? (lang === 'ro' ? 'Evaluează Clientul' : 'Rate Client') : (lang === 'ro' ? 'Evaluează Profesionistul' : 'Rate Professional')}
@@ -334,7 +385,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                         <button 
                           onClick={() => onAction(j.id, 'accept')}
                           className={cn(
-                            "flex-1 py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
+                            "flex-1 h-9 min-w-0 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
                             j.isEmergency ? "bg-orange-500 text-white shadow-orange-200" : "bg-brand text-white shadow-brand/10"
                           )}
                         >
@@ -342,7 +393,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                         </button>
                         <button 
                           onClick={() => onAction(j.id, 'decline')}
-                          className="flex-1 py-1.5 bg-white border border-red-50 text-red-500 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-red-50 active:scale-[0.98] transition-all"
+                          className="flex-1 h-9 min-w-0 bg-white border border-red-100 text-red-500 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-red-50 active:scale-[0.98] transition-all"
                         >
                           <XCircle className="w-2.5 h-2.5" /> {lang === 'ro' ? 'Refuză' : 'Decline'}
                         </button>
@@ -353,7 +404,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                         <button 
                           onClick={() => onAction(j.id, 'fin-p')}
                           className={cn(
-                            "flex-1 py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
+                            "flex-1 h-9 min-w-0 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
                             j.isEmergency ? "bg-orange-500 text-white shadow-orange-200" : "bg-brand text-white shadow-brand/10"
                           )}
                         >
@@ -361,7 +412,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                         </button>
                         <button 
                           onClick={() => onChat(p!)}
-                          className="flex-1 py-1.5 bg-white border border-slate-100 text-slate-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
+                          className="flex-1 h-9 min-w-0 bg-white border border-slate-100 text-slate-700 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
                         >
                           <MessageSquare className="w-2.5 h-2.5" /> {t('message')}
                         </button>
@@ -371,11 +422,11 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                       <>
                         <button 
                           onClick={() => onChat(p!)}
-                          className="flex-1 py-1.5 bg-white border border-slate-100 text-slate-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
+                          className="flex-1 h-9 min-w-0 bg-white border border-slate-100 text-slate-700 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
                         >
                           <MessageSquare className="w-2.5 h-2.5" /> Message
                         </button>
-                        <button className="flex-1 py-1.5 bg-white border border-slate-100 text-slate-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all">
+                        <button className="flex-1 h-9 min-w-0 bg-white border border-slate-100 text-slate-700 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all">
                           <FileText className="w-2.5 h-2.5" /> Invoice
                         </button>
                       </>
@@ -394,7 +445,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                         <button 
                           onClick={() => onAction(j.id, 'book_again')}
                           className={cn(
-                            "flex-[1.3] py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
+                            "flex-[1.3] h-9 min-w-0 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
                             j.isEmergency ? "bg-orange-500 text-white shadow-orange-200" : "bg-brand text-white shadow-brand/10"
                           )}
                         >
@@ -402,11 +453,11 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                         </button>
                         <button 
                           onClick={() => onChat(p!)}
-                          className="flex-1 py-1.5 bg-white border border-slate-100 text-slate-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
+                          className="flex-1 h-9 min-w-0 bg-white border border-slate-100 text-slate-700 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
                         >
                           <MessageSquare className="w-2.5 h-2.5" /> {t('message')}
                         </button>
-                        <button className="flex-1 py-1.5 bg-white border border-slate-100 text-slate-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all">
+                        <button className="flex-1 h-9 min-w-0 bg-white border border-slate-100 text-slate-700 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all">
                           <FileText className="w-2.5 h-2.5" /> {lang === 'ro' ? 'Factură' : 'Invoice'}
                         </button>
                       </>
@@ -417,7 +468,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                             <button 
                               onClick={() => onAction(j.id, 'fin-c')}
                               className={cn(
-                                "flex-1 py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
+                                "flex-1 h-9 min-w-0 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
                                 j.isEmergency ? "bg-orange-500 text-white shadow-orange-200" : "bg-brand text-white shadow-brand/10"
                               )}
                             >
@@ -425,7 +476,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                             </button>
                             <button 
                               onClick={() => onAction(j.id, 'dispute')}
-                              className="flex-1 py-1.5 bg-white border border-red-50 text-red-500 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-red-50 active:scale-[0.98] transition-all"
+                              className="flex-1 h-9 min-w-0 bg-white border border-red-100 text-red-500 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-red-50 active:scale-[0.98] transition-all"
                             >
                               <Shield className="w-2.5 h-2.5" /> {lang === 'ro' ? 'Dispută' : 'Dispute'}
                             </button>
@@ -435,7 +486,7 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                              <button 
                               onClick={() => onAction(j.id, 'reschedule')}
                               className={cn(
-                                "flex-[1.3] py-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
+                                "flex-[1.3] h-9 min-w-0 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition-all",
                                 j.isEmergency ? "bg-orange-500 text-white shadow-orange-200" : "bg-brand text-white shadow-brand/10"
                               )}
                             >
@@ -443,13 +494,13 @@ export function JobsList({ jobs, isPro, onAction, onChat, onReview, lang = 'en' 
                             </button>
                             <button 
                               onClick={() => onChat(p!)}
-                              className="flex-1 py-1.5 bg-white border border-slate-100 text-slate-700 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
+                              className="flex-1 h-9 min-w-0 bg-white border border-slate-100 text-slate-700 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-slate-50 active:scale-[0.98] transition-all"
                             >
                               <MessageSquare className="w-2.5 h-2.5" /> {t('message')}
                             </button>
                             <button 
                               onClick={() => onAction(j.id, 'cancel')}
-                              className="flex-1 py-1.5 bg-white border border-red-50 text-red-500 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 hover:bg-red-50 active:scale-[0.98] transition-all"
+                              className="flex-1 h-9 min-w-0 bg-white border border-red-100 text-red-500 rounded-xl px-2 text-[10px] font-black flex items-center justify-center gap-1 hover:bg-red-50 active:scale-[0.98] transition-all"
                             >
                               <XCircle className="w-2.5 h-2.5" /> {lang === 'ro' ? 'Anulează' : 'Cancel'}
                             </button>

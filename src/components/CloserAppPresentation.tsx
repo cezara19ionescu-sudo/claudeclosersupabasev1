@@ -40,6 +40,20 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
 
   // State for SOS section (Radar)
   const [sosStep, setSosStep] = useState(0);
+  const [problemBubbleIdx, setProblemBubbleIdx] = useState(0);
+
+  const problemBubbles = [
+    { text: 'HELP!', className: 'left-[6%] top-[14%] -rotate-12 bg-[#FF8A5B] scale-110' },
+    { text: 'SOS!', className: 'right-[6%] top-[22%] rotate-12 bg-[#FF6B35] scale-125' },
+    { text: 'PANIC!', className: 'left-[12%] bottom-[18%] rotate-6 bg-[#ef4444] scale-110' },
+    { text: 'HELP!', className: 'right-[12%] bottom-[14%] -rotate-6 bg-[#FF8A5B] scale-115' },
+    { text: 'SOS!', className: 'left-1/2 top-[7%] -translate-x-1/2 rotate-3 bg-[#FF6B35] scale-125' },
+    { text: 'PANIC!', className: 'left-1/2 bottom-[6%] -translate-x-1/2 -rotate-3 bg-[#ef4444] scale-110' },
+    { text: 'HELP!', className: 'left-[28%] top-[35%] -rotate-3 bg-[#FF8A5B] scale-105' },
+    { text: 'SOS!', className: 'right-[24%] top-[48%] rotate-6 bg-[#FF6B35] scale-105' },
+    { text: 'PANIC!', className: 'left-[4%] top-[50%] rotate-12 bg-[#ef4444] scale-110' },
+    { text: 'HELP!', className: 'right-[4%] top-[8%] -rotate-12 bg-[#FF8A5B] scale-105' },
+  ];
 
   useEffect(() => {
     const sosTimer = setInterval(() => {
@@ -47,6 +61,13 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
     }, 3000);
     return () => clearInterval(sosTimer);
   }, []);
+
+  useEffect(() => {
+    const bubbleTimer = setInterval(() => {
+      setProblemBubbleIdx((prev) => (prev + 1) % problemBubbles.length);
+    }, 520);
+    return () => clearInterval(bubbleTimer);
+  }, [problemBubbles.length]);
 
   const testimonials = [
     {
@@ -129,6 +150,12 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
     return () => observer.disconnect();
   }, []);
 
+  const glassSection = "relative overflow-hidden rounded-[28px] p-5 mb-4 bg-white/64 backdrop-blur-xl border border-white/75 shadow-[0_22px_46px_-34px_rgba(15,23,42,0.82)]";
+  const glassPanel = "bg-white/52 backdrop-blur-md rounded-2xl border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
+  const eyebrow = "text-[10px] font-black text-[#1a4d4d] tracking-[0.16em] uppercase mb-1";
+  const sectionTitle = "text-[20px] font-black text-slate-950 leading-tight tracking-tight";
+  const sectionCopy = "text-[12px] text-slate-500 font-semibold leading-relaxed";
+
   return (
     <div ref={sectionRef} className="w-full">
       <style>{`
@@ -198,10 +225,19 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
           15%, 45% { transform: scale(3); opacity: 1; }
           50%, 100% { transform: scale(0); opacity: 0; }
         }
+        @keyframes closer-help-card-pop {
+          0% { opacity: 0; transform: translateY(10px) scale(0.55); filter: blur(5px); }
+          16% { opacity: 1; transform: translateY(0) scale(1.18); filter: blur(0); }
+          58% { opacity: 1; transform: translateY(-2px) scale(1.06); filter: blur(0); }
+          100% { opacity: 0; transform: translateY(-12px) scale(0.78); filter: blur(3px); }
+        }
         .animate-chaotic { 
           animation: closer-chaotic-pop 4s infinite; 
           transform-box: fill-box;
           transform-origin: center;
+        }
+        .animate-help-card-pop {
+          animation: closer-help-card-pop 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) both;
         }
 
         @keyframes closer-flow {
@@ -220,7 +256,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       `}</style>
 
       {/* TICKER SOCIAL PROOF */}
-      <div className="bg-[#1a4d4d]/10 border border-[#1a4d4d]/20 rounded-full px-3 py-1.5 mb-4 flex items-center gap-2 overflow-hidden mx-auto w-fit max-w-full">
+      <div className="bg-white/64 backdrop-blur-xl border border-white/75 rounded-full px-3 py-2 mb-4 flex items-center gap-2 overflow-hidden mx-auto w-fit max-w-full shadow-[0_14px_30px_-24px_rgba(15,23,42,0.8)]">
         <Activity className="w-3.5 h-3.5 text-[#1a4d4d] flex-shrink-0 animate-pulse" />
         <p 
           className={`text-[10px] sm:text-xs font-medium text-[#1a4d4d] truncate transition-opacity duration-500 ${tickerVisible ? 'opacity-100' : 'opacity-0'}`}
@@ -230,15 +266,17 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </div>
 
       {/* SECTION 1: LIVE AI CHAT DEMO */}
-      <section className="bg-white rounded-2xl p-5 mb-12 border border-gray-200">
-        <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest mb-1">
+      <section className={glassSection}>
+        <div className="absolute -top-16 -right-14 h-36 w-36 rounded-full bg-white/55 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-14 h-36 w-36 rounded-full bg-teal-200/20 blur-3xl pointer-events-none" />
+        <p className={eyebrow}>
           HOW IT WORKS · LIVE DEMO
         </p>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-3">
+        <h3 className={`${sectionTitle} mb-3`}>
           Describe. We find. Solved.
         </h3>
 
-        <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 min-h-[220px]">
+        <div className={`${glassPanel} p-3 min-h-[220px]`}>
           <p className="text-[9px] text-gray-500 tracking-wider font-medium mb-2">
             AI CHAT · LIVE
           </p>
@@ -276,7 +314,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
 
           {chatStep >= 3 && (
             <div
-              className="flex items-center gap-2.5 bg-white p-2.5 rounded-xl border border-gray-200 mt-2 cursor-pointer hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-2.5 bg-white/70 backdrop-blur-md p-2.5 rounded-2xl border border-white/75 mt-2 cursor-pointer hover:bg-white/85 transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]"
               style={{ animation: 'closer-fade-up 0.5s ease-out both' }}
               onClick={onCtaClick}
             >
@@ -316,17 +354,30 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* PROBLEM (BURST PIPE ANIMATION) */}
-      <section className="mb-12">
+      <section className={glassSection}>
         <div className="mb-4 text-center">
-          <h3 className="text-xl font-bold text-gray-900 mb-1">
+          <h3 className={`${sectionTitle} mb-1`}>
             Problems happen when you least expect them
           </h3>
-          <p className="text-sm text-gray-500">
+          <p className={sectionCopy}>
             A burst pipe on a Sunday does not care about your schedule.
           </p>
         </div>
 
-        <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden shadow-lg border border-gray-100 bg-gray-50 flex items-center justify-center p-8">
+        <div className="relative w-full aspect-[16/9] rounded-[24px] overflow-hidden shadow-[0_18px_38px_-30px_rgba(15,23,42,0.65)] border border-white/75 bg-white/52 backdrop-blur-md flex items-center justify-center p-8">
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            {problemBubbles.map((bubble, index) => (
+              index === problemBubbleIdx && (
+                <div
+                  key={`${bubble.text}-${index}-${problemBubbleIdx}`}
+                  className={`absolute ${bubble.className} animate-help-card-pop rounded-full px-4 py-2.5 text-[12px] font-black text-white shadow-2xl shadow-black/20 border border-white/25`}
+                >
+                  {bubble.text}
+                </div>
+              )
+            ))}
+          </div>
+
           <div className="w-full max-w-[280px] h-full flex items-center justify-center relative">
             <svg viewBox="0 0 240 220" fill="none" className="w-full h-full overflow-visible drop-shadow-2xl">
               <defs>
@@ -351,8 +402,8 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
               {/* SHADOW */}
               <path d="M60 200 L95 200 L95 80 C95 40 105 25 130 25 L190 25 C210 25 215 45 215 65 L215 95 L165 95 L165 65 C165 45 155 40 135 40 L105 40 C95 40 95 45 95 60 L95 200 Z" fill="rgba(0,0,0,0.06)" transform="translate(10, 15)" filter="blur(6px)" />
 
-              {/* DISTRIBUTED CHAOTIC HELP BUBBLES */}
-              <g>
+              {/* Legacy SVG help bubbles disabled; HTML bubbles above appear one by one around the card. */}
+              <g opacity="0">
                 {/* POSITION: LEFT */}
                 <g transform="translate(-100, 80) rotate(-15)" className="animate-chaotic" style={{ animationDelay: '0s' }}>
                   <rect width="60" height="25" rx="12.5" fill="#FF8A5B" />
@@ -458,17 +509,17 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* SOS SECTION (RADAR) */}
-      <section className="mb-12">
+      <section className={glassSection}>
         <div className="mb-4 text-center">
-          <h3 className="text-xl font-bold text-gray-900 mb-1">
+          <h3 className={`${sectionTitle} mb-1`}>
             But you have help <span className="text-[#FF6B35]">on the spot.</span>
           </h3>
-          <p className="text-sm text-gray-500">
+          <p className={sectionCopy}>
             Press the SOS button and we'll find the nearest professional.
           </p>
         </div>
 
-        <div className="bg-white rounded-3xl p-6 relative overflow-hidden shadow-xl border border-slate-100">
+        <div className="bg-white/52 backdrop-blur-md rounded-[24px] p-6 relative overflow-hidden shadow-[0_18px_38px_-30px_rgba(15,23,42,0.65)] border border-white/75">
           {/* Zoomed-in "Blueprint" Map Background Layer */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             <svg className="w-full h-full opacity-60 scale-150 transform-gpu" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -548,7 +599,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
             </div>
 
             <div className={`transition-all duration-500 absolute w-full px-2 ${sosStep === 2 ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-              <div className="bg-white rounded-2xl p-3 flex items-center gap-3 w-full shadow-lg">
+              <div className="bg-white/78 backdrop-blur-md rounded-2xl p-3 flex items-center gap-3 w-full shadow-lg border border-white/75">
                 <div className="relative">
                   <img src="https://i.pravatar.cc/100?img=11" alt="Andrew M." className="w-12 h-12 rounded-full object-cover border-2 border-[#1a4d4d]" />
                   <div className="absolute -bottom-1 -right-1 bg-teal-500 w-4 h-4 rounded-full border-2 border-white"></div>
@@ -573,14 +624,14 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* SECTION 2: WHAT IS CLOSER */}
-      <section className="bg-white rounded-2xl p-5 mb-3 border border-gray-200 shadow-sm">
-        <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest mb-1">
+      <section className={glassSection}>
+        <p className={eyebrow}>
           WHAT IS CLOSER
         </p>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-2">
+        <h3 className={`${sectionTitle} mb-2`}>
           Find the right pro in 12 minutes, not 3 days
         </h3>
-        <p className="text-xs text-gray-500 leading-relaxed mb-4">
+        <p className={`${sectionCopy} mb-4`}>
           Our AI understands exactly what you need, even if you don't know the exact term.
           Tell it naturally: "my sink is leaking" or "I have no power" — we do the rest.
         </p>
@@ -593,7 +644,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
           ].map((s, i) => (
             <div
               key={i}
-              className="bg-teal-50 rounded-xl p-2.5 text-center border border-teal-100"
+              className="bg-white/52 backdrop-blur-md rounded-2xl p-2.5 text-center border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]"
               style={statsVisible ? { animation: `closer-counter-pop 0.8s ease-out ${s.delay} both` } : { opacity: 0 }}
             >
               <p className="text-lg font-medium text-[#1a4d4d] leading-none">{s.num}</p>
@@ -604,7 +655,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* CLOSER GUARANTEE */}
-      <section className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-5 mb-3 border border-blue-100">
+      <section className="relative overflow-hidden rounded-[28px] p-5 mb-4 bg-gradient-to-br from-white/76 via-blue-50/70 to-teal-50/70 backdrop-blur-xl border border-white/75 shadow-[0_22px_46px_-34px_rgba(15,23,42,0.82)]">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
             <ShieldCheck className="w-5 h-5" />
@@ -623,15 +674,15 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* BEFORE & AFTER SLIDER */}
-      <section className="bg-white rounded-2xl p-5 mb-3 border border-gray-200 shadow-sm">
-        <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest mb-1">
+      <section className={glassSection}>
+        <p className={eyebrow}>
           QUALITY OF WORK
         </p>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-3">
+        <h3 className={`${sectionTitle} mb-3`}>
           Results that speak for themselves
         </h3>
         
-        <div className="relative w-full h-[200px] bg-gray-200 rounded-xl overflow-hidden select-none touch-none">
+        <div className="relative w-full h-[200px] bg-white/52 rounded-[24px] overflow-hidden select-none touch-none border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
           <img 
             src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&q=80&w=800" 
             alt="After (Clean)" 
@@ -679,11 +730,11 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* PROBLEMS SOLVED */}
-      <section className="bg-white rounded-2xl p-5 mb-3 border border-gray-200">
-        <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest mb-1">
+      <section className={glassSection}>
+        <p className={eyebrow}>
           PROBLEMS WE SOLVE
         </p>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-3">
+        <h3 className={`${sectionTitle} mb-3`}>
           Stop calling 10 different companies
         </h3>
 
@@ -696,7 +747,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
           ].map((f, i) => {
             const Icon = f.icon;
             return (
-              <div key={i} className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm">
+              <div key={i} className="bg-white/52 backdrop-blur-md rounded-2xl p-3 border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center mb-2 bg-[#1a4d4d]"
                 >
@@ -711,18 +762,18 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* TRANSPARENT PRICING */}
-      <section className="bg-white rounded-2xl p-5 mb-3 border border-gray-200 shadow-sm">
+      <section className={glassSection}>
         <div className="flex items-center gap-2 mb-1">
           <CreditCard className="w-4 h-4 text-[#1a4d4d]" />
-          <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest">
+          <p className={eyebrow}>
             NO SURPRISES
           </p>
         </div>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-3">
+        <h3 className={`${sectionTitle} mb-3`}>
           Transparent Pricing
         </h3>
         
-        <div className="flex bg-gray-100 p-1 rounded-xl mb-3">
+        <div className="flex bg-white/52 backdrop-blur-md p-1 rounded-2xl mb-3 border border-white/75">
           {Object.keys(prices).map(tab => (
             <button
               key={tab}
@@ -736,7 +787,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
           ))}
         </div>
         
-        <div className="bg-[#1a4d4d]/5 border border-[#1a4d4d]/20 rounded-xl p-3 text-center">
+        <div className="bg-[#1a4d4d]/8 border border-white/75 rounded-2xl p-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
           <p className="text-sm font-semibold text-[#1a4d4d] mb-1">
             {prices[priceTab]}
           </p>
@@ -744,11 +795,11 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* HOW IT WORKS */}
-      <section className="bg-white rounded-2xl p-5 mb-3 border border-gray-200">
-        <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest mb-1">
+      <section className={glassSection}>
+        <p className={eyebrow}>
           3 SIMPLE STEPS
         </p>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-3">
+        <h3 className={`${sectionTitle} mb-3`}>
           From problem to solution
         </h3>
 
@@ -758,13 +809,13 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
             { num: 2, title: 'AI matches you with pros', desc: 'See 3 verified people with clear price and ETA' },
             { num: 3, title: 'Solve the problem', desc: 'Pay securely in-app, leave a review after' }
           ].map((s) => (
-            <div key={s.num} className="flex gap-2.5 items-start p-2.5 bg-gray-50 rounded-xl border border-gray-200">
-              <div className="w-6 h-6 rounded-full bg-[#1a4d4d] text-white flex items-center justify-center text-xs font-medium flex-shrink-0">
+            <div key={s.num} className="flex gap-3 items-start p-3 bg-white/52 backdrop-blur-md rounded-2xl border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+              <div className="w-7 h-7 rounded-full bg-[#1a4d4d] text-white flex items-center justify-center text-xs font-black flex-shrink-0 shadow-[0_10px_22px_-14px_rgba(26,77,77,0.8)]">
                 {s.num}
               </div>
               <div className="flex-1">
-                <p className="text-xs font-medium text-gray-900 mb-0.5">{s.title}</p>
-                <p className="text-[10px] text-gray-500 leading-snug">{s.desc}</p>
+                <p className="text-[13px] font-black text-slate-950 mb-0.5">{s.title}</p>
+                <p className="text-[10px] text-slate-500 font-semibold leading-snug">{s.desc}</p>
               </div>
             </div>
           ))}
@@ -772,11 +823,11 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* TESTIMONIALS */}
-      <section className="bg-white rounded-2xl p-5 mb-4 border border-gray-200 overflow-hidden shadow-sm">
-        <p className="text-[10px] font-medium text-[#1a4d4d] tracking-widest mb-1">
+      <section className={glassSection}>
+        <p className={eyebrow}>
           WHAT CLIENTS SAY
         </p>
-        <h3 className="text-lg font-medium text-gray-900 leading-snug mb-3">
+        <h3 className={`${sectionTitle} mb-3`}>
           Real, verified reviews
         </h3>
 
@@ -784,7 +835,7 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
           {testimonials.map((t, i) => (
             <div
               key={i}
-              className="absolute inset-0 bg-white rounded-2xl p-4 border border-gray-100 shadow-sm transition-opacity duration-500 flex flex-col justify-between"
+              className="absolute inset-0 bg-white/58 backdrop-blur-md rounded-2xl p-4 border border-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-opacity duration-500 flex flex-col justify-between"
               style={{
                 opacity: i === testimonialIdx ? 1 : 0,
                 pointerEvents: i === testimonialIdx ? 'auto' : 'none'
@@ -829,19 +880,20 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
       </section>
 
       {/* B2B CTA FOR PROS */}
-      <section className="bg-gray-900 text-white rounded-2xl p-5 mb-3 relative overflow-hidden shadow-xl">
-        <div className="absolute right-0 top-0 w-32 h-32 bg-[#1a4d4d] rounded-full blur-3xl opacity-30 -translate-y-1/2 translate-x-1/4"></div>
+      <section className="relative overflow-hidden rounded-[28px] p-5 mb-4 bg-slate-950/90 text-white border border-white/15 shadow-[0_24px_50px_-32px_rgba(2,6,23,0.95)]">
+        <div className="absolute right-0 top-0 w-32 h-32 bg-teal-400/25 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
+        <div className="absolute left-0 bottom-0 w-28 h-28 bg-white/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4"></div>
         <div className="relative z-10">
-          <p className="text-[10px] font-medium text-[#4bffc8] tracking-widest mb-1">
+          <p className="text-[10px] font-black text-[#4bffc8] tracking-[0.16em] uppercase mb-1">
             FOR PROFESSIONALS
           </p>
-          <h3 className="text-lg font-medium leading-snug mb-2">
+          <h3 className="text-[20px] font-black leading-tight tracking-tight mb-2">
             Are you a tradesperson or pro?
           </h3>
-          <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+          <p className="text-xs text-slate-300 font-semibold mb-4 leading-relaxed">
             Earn more, on your schedule. No annoying phone calls, everything organized in the app. Join over 500+ professionals.
           </p>
-          <button className="bg-white text-gray-900 px-4 py-2 rounded-full text-xs font-semibold w-full">
+          <button className="bg-white/92 text-slate-950 px-4 py-2.5 rounded-full text-xs font-black w-full shadow-[0_14px_30px_-22px_rgba(255,255,255,0.9)] hover:bg-white transition-colors">
             Become a Closer Partner
           </button>
         </div>
@@ -849,16 +901,18 @@ const CloserAppPresentation = ({ onCtaClick }: { onCtaClick?: () => void }) => {
 
       {/* FINAL CTA */}
       <section
-        className="rounded-2xl p-5 text-center text-white"
+        className="relative overflow-hidden rounded-[28px] p-5 text-center text-white border border-white/20 shadow-[0_24px_50px_-34px_rgba(26,77,77,0.95)]"
         style={{ background: 'linear-gradient(135deg, #1a4d4d 0%, #2d5a5a 100%)' }}
       >
-        <p className="text-base font-medium mb-1">Ready to get it solved quickly?</p>
-        <p className="text-xs opacity-85 mb-3">
+        <div className="absolute -right-12 -top-12 h-28 w-28 rounded-full bg-white/15 blur-2xl pointer-events-none" />
+        <div className="absolute -left-12 -bottom-12 h-28 w-28 rounded-full bg-teal-200/20 blur-2xl pointer-events-none" />
+        <p className="relative text-[18px] font-black tracking-tight mb-1">Ready to get it solved quickly?</p>
+        <p className="relative text-xs opacity-85 font-semibold mb-3">
           Free for clients · verified pros · no hidden fees
         </p>
         <button
           onClick={onCtaClick}
-          className="bg-white text-[#1a4d4d] px-5 py-2.5 rounded-full text-xs font-medium inline-flex items-center gap-1.5 hover:bg-gray-100 transition-colors"
+          className="relative bg-white text-[#1a4d4d] px-5 py-2.5 rounded-full text-xs font-black inline-flex items-center gap-1.5 hover:bg-gray-100 transition-colors shadow-[0_14px_30px_-22px_rgba(255,255,255,0.9)]"
         >
           Start now
           <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.5} />

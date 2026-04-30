@@ -220,19 +220,25 @@ export function SearchBar({ value, onChange, onClear, onSearch, isLoading, lang 
             {isLoading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <motion.div
-                animate={{ 
-                  scale: [1, 1.25, 1],
+              <motion.span
+                animate={{
+                  opacity: [0.62, 0.95, 0.62],
+                  scale: [0.96, 1.04, 0.96],
+                  boxShadow: [
+                    "0 0 0 0 rgba(34,197,94,0.14)",
+                    "0 0 0 3px rgba(34,197,94,0.07)",
+                    "0 0 0 0 rgba(34,197,94,0)"
+                  ]
                 }}
-                transition={{ 
-                  repeat: Infinity, 
-                  duration: 2, 
-                  ease: "easeInOut" 
+                transition={{
+                  repeat: Infinity,
+                  duration: 2.1,
+                  ease: "easeInOut"
                 }}
-                className="flex items-center justify-center relative z-10"
+                className="relative z-10 h-2.5 w-2.5 overflow-hidden rounded-full border border-emerald-200/80 bg-emerald-300/85"
               >
-                <Sparkles className="w-3.5 h-3.5 fill-[#2D5A50]" />
-              </motion.div>
+                <span className="absolute left-[2px] top-[2px] h-[3px] w-[3px] rounded-full bg-white/70" />
+              </motion.span>
             )}
             <span className="relative z-10">{translations[lang].ai_assist}</span>
           </button>
@@ -281,6 +287,7 @@ export function CategoryGrid({ onSelect, onSubSelect, lang = 'en' }: {
   const t = (key: keyof typeof translations['en']) => (translations[lang] as any)[key] || key;
   const tSub = (sub: string) => (translations[lang] as any).subs?.[sub] || sub;
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [categoryTheme, setCategoryTheme] = useState<1 | 2>(1);
 
   const handleCatClick = (cat: Category) => {
     if (expandedId === cat.id) {
@@ -297,92 +304,184 @@ export function CategoryGrid({ onSelect, onSubSelect, lang = 'en' }: {
 
   return (
     <div className="flex flex-col gap-4 px-3">
+      <div className="rounded-[24px] border border-white/80 bg-white/75 p-2 shadow-[0_14px_36px_-28px_rgba(15,23,42,0.55)] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-2">
+          <div className="px-3">
+            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+              {lang === 'ro' ? 'Stil categorii' : 'Category style'}
+            </div>
+            <div className="text-[12px] font-black text-[#123f3f]">
+              {lang === 'ro' ? 'Alege tema' : 'Choose theme'}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-1 rounded-[18px] bg-slate-100/90 p-1">
+            {[1, 2].map((theme) => (
+              <button
+                key={theme}
+                type="button"
+                onClick={() => setCategoryTheme(theme as 1 | 2)}
+                className={cn(
+                  "h-10 rounded-[14px] px-4 text-[11px] font-black transition-all",
+                  categoryTheme === theme
+                    ? "bg-[#1a4d4d] text-white shadow-[0_10px_20px_-14px_rgba(26,77,77,0.9)]"
+                    : "text-slate-500"
+                )}
+              >
+                {lang === 'ro' ? `Tema ${theme}` : `Theme ${theme}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-3 gap-2">
         {CATS.map((c) => {
           const Icon = ICON_MAP[c.id];
           const isExpanded = expandedId === c.id;
+          const isThemeTwo = categoryTheme === 2;
+          const activeCategoryColor = isThemeTwo ? '#11966f' : c.color;
+          const catTint = `${c.color}14`;
+          const catTintStrong = `${c.color}24`;
+          const catBorder = `${c.color}66`;
           
           return (
             <React.Fragment key={c.id}>
               <motion.button
                 id={`cat-${c.id}`}
                 onClick={() => handleCatClick(c)}
+                layout
                 animate={{ 
-                  scale: isExpanded ? 1.05 : 1,
-                  backgroundColor: isExpanded ? `${c.color}15` : "#ffffff",
-                  borderColor: isExpanded ? c.color : "transparent",
-                  boxShadow: isExpanded 
-                    ? `0 15px 30px -12px ${c.color}30` 
-                    : "0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)"
+                  y: isExpanded ? (isThemeTwo ? -2 : -4) : 0,
+                  scale: isExpanded ? (isThemeTwo ? 1.01 : 1.03) : 1,
+                  backgroundColor: isExpanded ? (isThemeTwo ? activeCategoryColor : catTint) : "#ffffff",
+                  borderColor: isExpanded ? (isThemeTwo ? 'rgba(17,150,111,0.95)' : catBorder) : "rgba(255,255,255,0.92)",
+                  boxShadow: isExpanded
+                    ? isThemeTwo
+                      ? "0 18px 36px -20px rgba(17,150,111,0.7), inset 0 1px 0 rgba(255,255,255,0.25)"
+                      : `0 18px 34px -18px ${c.color}cc, 0 8px 18px -14px rgba(15,23,42,0.35)`
+                    : isThemeTwo
+                      ? "0 14px 28px -24px rgba(15,23,42,0.65), inset 0 1px 0 rgba(255,255,255,0.9)"
+                      : "0 7px 18px -14px rgba(15,23,42,0.35)"
                 }}
                 whileHover={{
-                  scale: isExpanded ? 1.05 : 1.04,
-                  backgroundColor: isExpanded ? `${c.color}20` : `${c.color}08`,
-                  borderColor: isExpanded ? c.color : `${c.color}60`,
+                  y: -3,
+                  scale: isExpanded ? (isThemeTwo ? 1.015 : 1.035) : 1.025,
+                  backgroundColor: isExpanded ? (isThemeTwo ? activeCategoryColor : catTintStrong) : (isThemeTwo ? "#ffffff" : `${c.color}0d`),
+                  borderColor: isThemeTwo ? "rgba(17,150,111,0.38)" : catBorder,
                   boxShadow: isExpanded
-                    ? `0 20px 40px -12px ${c.color}40`
-                    : `0 12px 24px -6px ${c.color}25, 0 4px 8px -2px rgba(0,0,0,0.06)`
+                    ? isThemeTwo
+                      ? "0 20px 40px -20px rgba(17,150,111,0.72)"
+                      : `0 20px 38px -16px ${c.color}dd, 0 8px 18px -12px rgba(15,23,42,0.28)`
+                    : isThemeTwo
+                      ? "0 18px 34px -24px rgba(15,23,42,0.45)"
+                      : `0 15px 30px -18px ${c.color}bb, 0 8px 14px -12px rgba(15,23,42,0.30)`
                 }}
                 whileTap={{
-                  scale: 0.93,
-                  backgroundColor: `${c.color}25`,
-                  boxShadow: `0 0 0 4px ${c.color}15, 0 2px 8px rgba(0,0,0,0.08)`,
+                  y: 0,
+                  scale: 0.96,
+                  backgroundColor: isThemeTwo ? activeCategoryColor : catTintStrong,
+                  boxShadow: isThemeTwo ? "0 0 0 5px rgba(17,150,111,0.12)" : `0 0 0 5px ${c.color}18, 0 4px 12px rgba(15,23,42,0.10)`,
                 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                transition={{ type: "spring", stiffness: 460, damping: 30, mass: 0.72 }}
                 className={cn(
-                  "relative cursor-pointer rounded-[32px] p-4 aspect-square text-center flex flex-col items-center justify-center bg-white border-2 group z-0",
+                  "relative cursor-pointer aspect-square text-center flex flex-col items-center justify-center bg-white border group z-0 overflow-hidden category-highlight-card",
+                  isThemeTwo ? "rounded-[32px] p-3" : "rounded-[26px] p-4",
                   isExpanded && "z-10"
                 )}
                 style={{
                   '--cat-color': c.color,
-                  '--cat-bg': `${c.color}20`
+                  '--cat-bg': catTintStrong
                 } as any}
               >
-                <div 
+                <motion.div
+                  aria-hidden="true"
+                  className="absolute inset-0 pointer-events-none"
+                  initial={false}
+                  animate={{ opacity: isExpanded ? 1 : 0 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                >
+                  <div
+                    className="absolute -inset-x-8 -top-10 h-24 rotate-[-18deg] blur-xl"
+                    style={{ background: `linear-gradient(90deg, transparent, ${c.color}30, transparent)` }}
+                  />
+                  <motion.div
+                    className="absolute inset-2 rounded-[22px] border"
+                    style={{ borderColor: `${c.color}38` }}
+                    animate={{ scale: 1, opacity: 0.7 }}
+                    transition={{ duration: 0.24, ease: "easeOut" }}
+                  />
+                </motion.div>
+
+                <motion.div 
                   className={cn(
-                    "w-16 h-16 mb-2 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-active:scale-95",
-                    isExpanded ? "scale-105 shadow-inner" : "bg-slate-50 group-hover:bg-[var(--cat-bg)]"
+                    "relative flex items-center justify-center transition-colors duration-300",
+                    isThemeTwo ? "w-16 h-16 mb-3 rounded-[20px]" : "w-16 h-16 mb-2 rounded-[22px]",
+                    isExpanded ? (isThemeTwo ? "" : "shadow-inner") : (isThemeTwo ? "" : "bg-slate-50 group-hover:bg-[var(--cat-bg)]")
                   )}
+                  animate={{
+                    rotate: 0,
+                    scale: isExpanded ? 1.06 : 1
+                  }}
+                  transition={{
+                    rotate: { duration: 0.5, ease: "easeOut" },
+                    scale: { type: "spring", stiffness: 420, damping: 24 }
+                  }}
                   style={{
-                    backgroundColor: isExpanded ? `${c.color}25` : undefined
+                    backgroundColor: isExpanded ? (isThemeTwo ? 'rgba(255,255,255,0.08)' : `${c.color}20`) : undefined
                   }}
                 >
+                  <motion.div
+                    className="absolute inset-0 rounded-[22px]"
+                    animate={{ opacity: isExpanded ? 0.45 : 0 }}
+                    transition={{ duration: 0.22, ease: "easeOut" }}
+                    style={{ boxShadow: `inset 0 0 0 1px ${c.color}2f, 0 0 22px ${c.color}26` }}
+                  />
                   {Icon && (
+                    <motion.div
+                      animate={{ y: 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="relative z-10 flex items-center justify-center"
+                    >
                     <Icon 
                       className={cn(
                         "w-8 h-8 transition-colors duration-300",
+                        isThemeTwo && "w-12 h-12",
                         !isExpanded && "text-[#2d5a5a]"
                       )}
                       style={{ 
-                        color: isExpanded ? c.color : '#2d5a5a'
+                        color: isExpanded ? (isThemeTwo ? '#ffffff' : c.color) : '#2d5a5a'
                       }}
-                      strokeWidth={2.5}
+                      strokeWidth={isThemeTwo ? 2.15 : 2.5}
                     />
+                    </motion.div>
                   )}
-                </div>
-                <div 
+                </motion.div>
+                <motion.div 
                   className={cn(
-                    "text-[12px] leading-tight tracking-tight transition-all duration-300",
-                    isExpanded ? "font-black" : "font-medium",
+                    "relative z-10 leading-tight tracking-tight transition-colors duration-300 whitespace-pre-line",
+                    isThemeTwo ? "text-[18px]" : "text-[12px]",
+                    isExpanded ? "font-black" : "font-extrabold",
                     !isExpanded && "text-[#2d5a5a]"
                   )}
+                  animate={{ y: isExpanded ? -1 : 0 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 28 }}
                   style={{ 
-                    color: isExpanded ? c.color : undefined
+                    color: isExpanded ? (isThemeTwo ? '#ffffff' : c.color) : (isThemeTwo ? '#0f172a' : undefined)
                   }}
                 >
                   {t(`cat_${c.id}` as any)}
-                </div>
+                </motion.div>
                 
                 {/* Visual Feedback Ring on Active/Touch */}
                 <AnimatePresence>
                   {isExpanded && (
                     <motion.div 
-                      layoutId={`ring-${c.id}`}
-                      className="absolute inset-0 rounded-[24px] border-4 border-current opacity-10 pointer-events-none"
-                      style={{ color: c.color }}
-                      initial={{ opacity: 0, scale: 1.1 }}
-                      animate={{ opacity: 0.1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.1 }}
+                      className="absolute bottom-2 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full pointer-events-none"
+                      style={{ backgroundColor: c.color }}
+                      initial={{ opacity: 0, width: 8 }}
+                      animate={{ opacity: 1, width: 32 }}
+                      exit={{ opacity: 0, width: 8 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 32 }}
                     />
                   )}
                 </AnimatePresence>
@@ -392,10 +491,16 @@ export function CategoryGrid({ onSelect, onSubSelect, lang = 'en' }: {
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="col-span-3 overflow-hidden bg-slate-50/50 rounded-[32px] mt-2 mb-4 p-4 border border-slate-100"
+                    layout
+                    initial={{ opacity: 0, height: 0, y: -10, scale: 0.98 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0, scale: 1 }}
+                    exit={{ opacity: 0, height: 0, y: -8, scale: 0.985 }}
+                    transition={{ type: "spring", stiffness: 360, damping: 32, opacity: { duration: 0.18 } }}
+                    className="col-span-3 overflow-hidden rounded-[26px] mt-2 mb-4 p-4 border bg-white/80 backdrop-blur-sm"
+                    style={{
+                      borderColor: `${c.color}1f`,
+                      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.75), 0 18px 36px -30px ${c.color}`
+                    }}
                   >
                     <div className="flex items-center justify-between mb-4 px-1">
                       <h4 className="text-[14px] font-black text-[#1a4d4d]">{t('popular_in')} {t(`cat_${c.id}` as any).replace('\n', ' ')}</h4>
@@ -403,10 +508,15 @@ export function CategoryGrid({ onSelect, onSubSelect, lang = 'en' }: {
                     </div>
                     
                     <div className="grid grid-cols-2 gap-3">
-                      {c.subs.slice(0, 4).map((sub) => (
-                        <button
+                      {c.subs.slice(0, 4).map((sub, index) => (
+                        <motion.button
                           key={sub}
                           onClick={() => onSubSelect(sub, c)}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.04 * index, type: "spring", stiffness: 380, damping: 28 }}
+                          whileHover={{ y: -2, scale: 1.015 }}
+                          whileTap={{ scale: 0.98 }}
                           className="relative h-24 rounded-2xl overflow-hidden group shadow-sm border border-white premium-touch"
                         >
                           <img 
@@ -419,7 +529,7 @@ export function CategoryGrid({ onSelect, onSubSelect, lang = 'en' }: {
                             <div className="text-[10px] text-white/70 font-bold uppercase tracking-wider mb-0.5">{SUB_IC[sub] || '🛠️'}</div>
                             <div className="text-[13px] font-black text-white leading-tight">{tSub(sub)}</div>
                           </div>
-                        </button>
+                        </motion.button>
                       ))}
                       
                       {c.subs.length > 4 && (
@@ -520,4 +630,3 @@ export function ProCard({ pro, onClick, index, lang = 'en' }: { pro: Professiona
     </div>
   );
 }
-

@@ -34,6 +34,7 @@ interface SearchResultsScreenProps {
   onShowInfo: () => void;
   user: User;
   aiFeedback?: {message: string, estimate: string | undefined, safetyTip?: string | null, followUps?: string[]} | null;
+  surveyAnswers?: Record<string, string> | null;
   lang?: Language;
 }
 
@@ -48,6 +49,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   onShowInfo,
   user,
   aiFeedback,
+  surveyAnswers,
   lang = 'en'
 }) => {
   const t = (key: keyof typeof translations['en']) => (translations[lang] as any)[key] || key;
@@ -56,6 +58,45 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
   const [filterAvailability, setFilterAvailability] = useState<'all' | 'today' | 'this-week'>('all');
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [maxPrice, setMaxPrice] = useState(1000);
+
+  const surveyText = useMemo(() => Object.values(surveyAnswers || {}).join(' ').toLowerCase(), [surveyAnswers]);
+
+  const getMatchScore = (pro: Professional) => {
+    let score = 0;
+
+    score += pro.rating * 18;
+    score += Math.min(pro.rc || 0, 80) * 0.35;
+    score += Math.min(pro.jobs || 0, 120) * 0.18;
+    if (pro.v?.id) score += 10;
+    if (pro.v?.dbs) score += 8;
+    if (pro.v?.ins) score += 6;
+    if (pro.isEmergencyAvailable) score += 4;
+
+    if (surveyText) {
+      const urgentWords = ['urgent', 'imediat', 'asap', 'azi', 'mâine', 'maine', 'bloc', 'scurgere', 'spart'];
+      const flexibleWords = ['flexibil', 'cotatie', 'cotație', 'săptămâna', 'saptamana'];
+      if (urgentWords.some(word => surveyText.includes(word))) {
+        score += pro.isEmergencyAvailable ? 28 : -8;
+      }
+      if (flexibleWords.some(word => surveyText.includes(word))) {
+        score += pro.price <= 50 ? 10 : 0;
+      }
+
+      const profileText = [
+        pro.sub,
+        pro.about,
+        ...(pro.svcs || []),
+        ...(pro.faqs || []).map(f => `${f.q} ${f.a}`)
+      ].join(' ').toLowerCase();
+
+      for (const token of surveyText.split(/[^a-zăâîșț0-9]+/i).filter(token => token.length > 3)) {
+        if (profileText.includes(token)) score += 3;
+      }
+    }
+
+    score -= Math.min(pro.price || 0, 300) * 0.03;
+    return score;
+  };
 
   const sortedProfessionals = useMemo(() => {
     let list = [...professionals];
@@ -78,10 +119,12 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
     }
 
     return list.sort((a, b) => {
+      const matchDiff = getMatchScore(b) - getMatchScore(a);
+      if (Math.abs(matchDiff) > 0.01) return matchDiff;
       if (b.rating !== a.rating) return b.rating - a.rating;
       return b.rc - a.rc;
     });
-  }, [filterVerified, filterAvailability, professionals, maxPrice, isEmergency]);
+  }, [filterVerified, filterAvailability, professionals, maxPrice, isEmergency, surveyText]);
 
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] max-w-md mx-auto shadow-xl min-h-screen font-sans">
@@ -253,7 +296,7 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
 
       {/* Results List */}
       <div className="flex-1 p-4 space-y-5">
-        {sortedProfessionals.map((pro) => (
+        {sortedProfessionals.map((pro, index) => (
           <div 
             key={pro.id}
             onClick={() => onViewProfile(pro)}
@@ -288,6 +331,11 @@ export const SearchResultsScreen: React.FC<SearchResultsScreenProps> = ({
                 
                 {/* Badges - Premium style */}
                 <div className="flex items-center gap-2 mb-3">
+                  {index === 0 && surveyAnswers && (
+                    <div className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[9px] font-black tracking-widest flex items-center gap-1 border border-emerald-100">
+                      <Zap size={10} strokeWidth={3} /> BEST MATCH
+                    </div>
+                  )}
                   <div className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-600 text-[9px] font-black tracking-widest flex items-center gap-1 border border-sky-100/50">
                     <CheckCircle2 size={10} strokeWidth={3} /> {t('verified').toUpperCase()}
                   </div>
